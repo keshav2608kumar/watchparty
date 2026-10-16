@@ -1,0 +1,342 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Play, 
+  Pause, 
+  Volume2, 
+  VolumeX, 
+  Maximize, 
+  RotateCcw, 
+  RotateCw, 
+  AlertCircle,
+  Radio,
+  Sliders,
+  Sparkles
+} from 'lucide-react';
+import { MediaType, PlaybackStatus, FloatingReaction } from '../../types/room';
+import { formatTime } from '../../utils/formatters';
+import { useUnifiedPlayer, PlayerControls, UnifiedPlayerState } from './useUnifiedPlayer';
+
+interface VideoPlayerProps {
+  mediaType: MediaType;
+  mediaUrl: string;
+  title: string;
+  isHost: boolean;
+  canControl: boolean;
+  reactions: FloatingReaction[];
+  onLocalUserAction?: (action: 'play' | 'pause' | 'seek', position: number) => void;
+  onPlayerControlsReady?: (controls: PlayerControls, getState: () => UnifiedPlayerState) => void;
+  syncDrift?: number;
+}
+
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  mediaType,
+  mediaUrl,
+  title,
+  isHost,
+  canControl,
+  reactions,
+  onLocalUserAction,
+  onPlayerControlsReady,
+  syncDrift = 0,
+}) => {
+  const { videoRef, containerRef, state, controls } = useUnifiedPlayer(
+    mediaType, 
+    mediaUrl, 
+    onLocalUserAction
+  );
+
+  const [showControls, setShowControls] = useState<boolean>(true);
+  const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (onPlayerControlsReady) {
+      onPlayerControlsReady(controls, () => state);
+    }
+  }, [onPlayerControlsReady, controls, state]);
+
+  // Auto-hide controls after 3s of inactivity while playing
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    if (state.status === 'playing') {
+      hideTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+        setShowSpeedMenu(false);
+      }, 3500);
+    }
+  };
+
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canControl) return;
+    const target = parseFloat(e.target.value);
+    controls.seek(target);
+  };
+
+  const handleQuickSkip = (offset: number) => {
+    if (!canControl) return;
+    controls.seek(state.currentTime + offset);
+  };
+
+  const togglePlay = () => {
+    if (!canControl) return;
+    if (state.status === 'playing') {
+      controls.pause();
+    } else {
+      controls.play();
+    }
+  };
+
+  const progressPercent = state.duration > 0 
+    ? Math.min(100, (state.currentTime / state.duration) * 100) 
+    : 0;
+
+  return (
+    <div 
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => state.status === 'playing' && setShowControls(false)}
+      className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-surface-border group select-none flex items-center justify-center"
+    >
+      {/* Media Engine Element */}
+      {mediaType === 'html5' ? (
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          className="w-full h-full object-contain pointer-events-auto"
+          playsInline
+          preload="auto"
+          onClick={togglePlay}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-black">
+          <div id="watchparty-yt-player" className="w-full h-full pointer-events-auto" />
+        </div>
+      )}
+
+      {/* Floating Reaction Overlay */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
+        {reactions.map((r) => (
+          <div
+            key={r.id}
+            style={{ left: `${r.xPercent}%` }}
+            className="absolute bottom-16 animate-float flex flex-col items-center transition-all duration-1000 ease-out"
+          >
+            <span className="text-4xl filter drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] transform hover:scale-125 transition-transform">
+              {r.emoji}
+            </span>
+            <span className="text-[10px] bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-slate-300 mt-1 whitespace-nowrap">
+              {r.senderName}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Buffering Indicator */}
+      {state.status === 'buffering' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-xs z-10 pointer-events-none">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-12 h-12 border-4 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" />
+            <span className="text-xs font-semibold tracking-wider text-slate-200 uppercase">Synchronizing Stream</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message Screen */}
+      {state.hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/95 z-30 p-6 text-center">
+          <AlertCircle className="w-12 h-12 text-rose-500 mb-3" />
+          <h4 className="text-lg font-bold text-white mb-1">Playback Error</h4>
+          <p className="text-sm text-slate-400 max-w-md mb-4">{state.errorMessage}</p>
+          <button 
+            onClick={() => controls.seek(state.currentTime)}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm font-medium transition"
+          >
+            Retry Video
+          </button>
+        </div>
+      )}
+
+      {/* Big Center Play/Pause button on pause */}
+      {state.status === 'paused' && !state.hasError && (
+        <div 
+          onClick={togglePlay}
+          className={`absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 transition-opacity ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
+        >
+          <div className="w-20 h-20 rounded-full bg-brand-600/90 text-white flex items-center justify-center shadow-glow-brand hover:scale-110 active:scale-95 transition-all">
+            <Play className="w-9 h-9 fill-current ml-1" />
+          </div>
+        </div>
+      )}
+
+      {/* Top Header Overlay: Title & Live Sync Badge */}
+      <div className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 via-black/30 to-transparent flex items-center justify-between z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-300 text-xs font-medium">
+            <Radio className="w-3.5 h-3.5 text-brand-400 animate-pulse" />
+            <span>LIVE ROOM</span>
+          </div>
+          <span className="text-white font-semibold text-sm drop-shadow truncate max-w-xs md:max-w-md">
+            {title}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {Math.abs(syncDrift) > 0.05 && (
+            <div className="text-[11px] px-2 py-0.5 rounded bg-black/60 text-slate-300 border border-white/10 hidden sm:flex items-center gap-1">
+              <span>Drift:</span>
+              <span className={Math.abs(syncDrift) < 0.5 ? 'text-emerald-400' : 'text-amber-400 font-medium'}>
+                {(syncDrift * 1000).toFixed(0)}ms
+              </span>
+            </div>
+          )}
+          {!canControl && (
+            <span className="text-xs bg-black/70 text-slate-400 border border-white/10 px-2.5 py-1 rounded-full">
+              Host Controlled
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Controls Bar */}
+      <div className={`absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2.5 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        {/* Progress Bar / Scrubber */}
+        <div className="relative group/timeline flex items-center w-full h-4 cursor-pointer">
+          <div className="w-full h-1.5 group-hover/timeline:h-2 bg-white/20 rounded-full overflow-hidden transition-all relative">
+            {/* Progress fill */}
+            <div 
+              className="h-full bg-gradient-to-r from-brand-500 to-electric-blue rounded-full transition-all relative"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          {/* Thumb marker */}
+          <div 
+            className="absolute w-3.5 h-3.5 bg-white rounded-full shadow -ml-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/timeline:opacity-100 transition-opacity pointer-events-none"
+            style={{ left: `${progressPercent}%` }}
+          />
+          {/* Invisible full-height range input */}
+          <input
+            type="range"
+            min={0}
+            max={state.duration || 100}
+            step={0.5}
+            value={state.currentTime}
+            disabled={!canControl}
+            onChange={handleSeekChange}
+            aria-label="Seek time scrubber"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          />
+        </div>
+
+        {/* Controls Row */}
+        <div className="flex items-center justify-between text-white text-sm">
+          {/* Left Controls: Play, Skips, Volume, Time */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={togglePlay}
+              disabled={!canControl}
+              title={canControl ? (state.status === 'playing' ? 'Pause' : 'Play') : 'Playback locked to host'}
+              className="p-1.5 rounded-lg hover:bg-white/10 active:scale-95 transition disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              {state.status === 'playing' ? (
+                <Pause className="w-5 h-5 fill-current" />
+              ) : (
+                <Play className="w-5 h-5 fill-current" />
+              )}
+            </button>
+
+            <button
+              onClick={() => handleQuickSkip(-10)}
+              disabled={!canControl}
+              title="Seek back 10s"
+              className="p-1.5 rounded-lg hover:bg-white/10 active:scale-95 transition disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => handleQuickSkip(10)}
+              disabled={!canControl}
+              title="Seek forward 10s"
+              className="p-1.5 rounded-lg hover:bg-white/10 active:scale-95 transition disabled:opacity-50"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+
+            {/* Volume */}
+            <div className="flex items-center gap-1.5 group/volume ml-1">
+              <button
+                onClick={controls.toggleMute}
+                title="Mute / Unmute"
+                className="p-1.5 rounded-lg hover:bg-white/10 transition"
+              >
+                {state.isMuted || state.volume === 0 ? (
+                  <VolumeX className="w-5 h-5 text-rose-400" />
+                ) : (
+                  <Volume2 className="w-5 h-5 text-slate-200" />
+                )}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={state.isMuted ? 0 : state.volume}
+                onChange={(e) => controls.setVolume(parseFloat(e.target.value))}
+                aria-label="Volume slider"
+                className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-brand-500 opacity-70 group-hover/volume:opacity-100 transition"
+              />
+            </div>
+
+            {/* Time display */}
+            <div className="text-xs font-mono text-slate-300 ml-2 select-none">
+              <span>{formatTime(state.currentTime)}</span>
+              <span className="text-slate-500 mx-1">/</span>
+              <span>{formatTime(state.duration)}</span>
+            </div>
+          </div>
+
+          {/* Right Controls: Speed, Fullscreen */}
+          <div className="flex items-center gap-2 relative">
+            {/* Playback speed selector */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs font-semibold tracking-wide transition flex items-center gap-1"
+              >
+                <span>{state.playbackRate}x</span>
+              </button>
+
+              {showSpeedMenu && (
+                <div className="absolute right-0 bottom-full mb-2 bg-surface-card border border-surface-border rounded-lg shadow-xl py-1 w-24 z-30">
+                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => {
+                        controls.setPlaybackRate(rate);
+                        setShowSpeedMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-600/30 transition flex items-center justify-between ${state.playbackRate === rate ? 'text-brand-400 font-bold' : 'text-slate-300'}`}
+                    >
+                      <span>{rate}x</span>
+                      {state.playbackRate === rate && <div className="w-1.5 h-1.5 rounded-full bg-brand-400" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Fullscreen */}
+            <button
+              onClick={controls.toggleFullscreen}
+              title="Fullscreen"
+              className="p-1.5 rounded-lg hover:bg-white/10 transition"
+            >
+              <Maximize className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
