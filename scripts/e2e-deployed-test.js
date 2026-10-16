@@ -10,20 +10,20 @@ async function testDeployedSite() {
 
   try {
     // 1. Landing Page
-    console.log('Testing Landing Page: https://watchparty-live-v1.surge.sh');
-    await page.goto('https://watchparty-live-v1.surge.sh/', { waitUntil: 'networkidle' });
+    console.log('Testing Landing Page: https://watchparty-cinema-live.surge.sh');
+    await page.goto('https://watchparty-cinema-live.surge.sh/', { waitUntil: 'networkidle' });
     await page.waitForSelector('h1:has-text("Same screen")', { timeout: 10000 });
     console.log('  ✓ Landing page title rendered successfully.');
 
     // 2. Discover Page
-    console.log('Testing Discover Page: https://watchparty-live-v1.surge.sh/discover');
-    await page.goto('https://watchparty-live-v1.surge.sh/discover', { waitUntil: 'networkidle' });
+    console.log('Testing Discover Page: https://watchparty-cinema-live.surge.sh/discover');
+    await page.goto('https://watchparty-cinema-live.surge.sh/discover', { waitUntil: 'networkidle' });
     await page.waitForSelector('text=Cinema Catalog', { timeout: 10000 });
     console.log('  ✓ Discover catalog rendered successfully.');
 
     // 3. Live Room Creation
-    console.log('Testing Watch Room: https://watchparty-live-v1.surge.sh/room/live-demo-room');
-    await page.goto('https://watchparty-live-v1.surge.sh/room/live-demo-room', { waitUntil: 'networkidle' });
+    console.log('Testing Watch Room: https://watchparty-cinema-live.surge.sh/room/live-demo-room');
+    await page.goto('https://watchparty-cinema-live.surge.sh/room/live-demo-room', { waitUntil: 'networkidle' });
     await page.waitForSelector('text=LIVE ROOM', { timeout: 10000 });
     console.log('  ✓ Watch Room initialized and rendered on deployed site.');
 

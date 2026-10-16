@@ -2,7 +2,7 @@
 
 WatchParty is a high-performance, real-time synchronized cinema application that allows friends and groups to watch videos together with frame-accurate synchronization, live audience chat, floating emoji reactions, group voting polls, and shared queues.
 
-🚀 **Live Deployment:** [https://watchparty-live-v1.surge.sh](https://watchparty-live-v1.surge.sh)  
+🚀 **Live Deployment:** [https://watchparty-cinema-live.surge.sh](https://watchparty-cinema-live.surge.sh)  
 💻 **Local Dev Server:** `http://localhost:5173/`
 
 ![WatchParty Cover](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1600&q=80)

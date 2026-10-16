@@ -7,7 +7,7 @@ This document describes the automated and manual deployment options for WatchPar
 ## 0. Active Live Production Deployment (Surge.sh)
 
 The production build of WatchParty is currently deployed and live at:
-- **Production URL:** [https://watchparty-live-v1.surge.sh](https://watchparty-live-v1.surge.sh)
+- **Production URL:** [https://watchparty-cinema-live.surge.sh](https://watchparty-cinema-live.surge.sh)
 - **Status:** **HEALTHY (200 OK)**
 - **Verification:** Verified with Playwright E2E (`scripts/e2e-deployed-test.js` and `scripts/e2e-deployed-multi-session.js`).
 
