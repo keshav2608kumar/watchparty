@@ -10,7 +10,7 @@ import {
   PlaybackStatus,
   RoomSettings
 } from '../types/room';
-import { RoomSyncChannel, ConnectionMode } from '../services/syncChannel';
+import { RoomSyncChannel, ConnectionMode, SyncCallbacks } from '../services/syncChannel';
 import { useAuth } from './AuthContext';
 import { analyzeDrift, canUserControlPlayback } from '../utils/driftCalculator';
 import { generateId } from '../utils/idGenerator';
@@ -76,6 +76,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
   })();
 
   const [hostId, setHostId] = useState<string>(initialHostId);
+  const hostIdRef = useRef<string>(hostId);
+  hostIdRef.current = hostId;
+
   const isHost = user.id === hostId;
 
   const [settings, setSettings] = useState<RoomSettings>({
@@ -150,107 +153,150 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
   const syncChannelRef = useRef<RoomSyncChannel | null>(null);
   const playbackStateRef = useRef<AuthoritativePlaybackState>(playbackState);
   playbackStateRef.current = playbackState;
+  const playlistRef = useRef<PlaylistItem[]>(playlist);
+  playlistRef.current = playlist;
+  const pollsRef = useRef<Poll[]>(polls);
+  pollsRef.current = polls;
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+
+  const currentMemberRef = useRef<RoomMember>({
+    id: user.id,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    isHost,
+    joinedAt: Date.now(),
+    lastActive: Date.now(),
+  });
+  currentMemberRef.current = {
+    id: user.id,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    isHost: user.id === hostId,
+    joinedAt: Date.now(),
+    lastActive: Date.now(),
+  };
 
   const registerPlayer = useCallback((controls: PlayerControls, getState: () => UnifiedPlayerState) => {
     playerControlsRef.current = controls;
     getPlayerStateRef.current = getState;
   }, []);
 
-  // Initialize Realtime Channel
-  useEffect(() => {
-    const currentMember: RoomMember = {
-      id: user.id,
-      name: user.name,
-      avatarUrl: user.avatarUrl,
-      isHost: user.id === hostId,
-      joinedAt: Date.now(),
-      lastActive: Date.now(),
-    };
+  // Stable callbacks ref to prevent tearing or reconnecting
+  const callbacksRef = useRef<SyncCallbacks>({
+    onPlaybackState: () => {},
+    onChatMessage: () => {},
+    onReaction: () => {},
+    onPlaylistUpdate: () => {},
+    onPollUpdate: () => {},
+    onHostTransfer: () => {},
+    onPresenceChange: () => {},
+    onRequestState: () => {},
+  });
 
-    const channel = new RoomSyncChannel(roomId, currentMember, {
-      onPlaybackState: (incomingState) => {
-        // Enforce monotonic revision ordering
-        if (incomingState.revision <= playbackStateRef.current.revision) {
-          return;
-        }
-
-        setPlaybackState(incomingState);
-        playbackStateRef.current = incomingState;
-
-        // Apply authoritative command to local player if controls are ready
-        if (playerControlsRef.current) {
-          // If playing, adjust position based on elapsed time
-          const elapsed = incomingState.playbackStatus === 'playing'
-            ? Math.max(0, (Date.now() - incomingState.updatedAt) / 1000)
-            : 0;
-          const targetPos = Math.max(0, incomingState.positionSeconds + (elapsed * incomingState.playbackRate));
-
-          playerControlsRef.current.applyRemoteAction(
-            incomingState.playbackStatus,
-            targetPos,
-            incomingState.playbackRate
-          );
-        }
-      },
-      onChatMessage: (incomingMsg) => {
-        setMessages((prev) => {
-          if (prev.some(m => m.id === incomingMsg.id)) return prev;
-          return [...prev, incomingMsg];
-        });
-      },
-      onReaction: (incomingReaction) => {
-        setReactions((prev) => [...prev, incomingReaction]);
-        // Auto-remove reaction from screen after 2.8s
-        setTimeout(() => {
-          setReactions((prev) => prev.filter(r => r.id !== incomingReaction.id));
-        }, 2800);
-      },
-      onPlaylistUpdate: (incomingPlaylist) => {
-        setPlaylist(incomingPlaylist);
-      },
-      onPollUpdate: (incomingPoll) => {
-        setPolls((prev) => {
-          const index = prev.findIndex(p => p.id === incomingPoll.id);
-          if (index >= 0) {
-            const updated = [...prev];
-            updated[index] = incomingPoll;
-            return updated;
-          }
-          return [...prev, incomingPoll];
-        });
-      },
-      onHostTransfer: (newHostId) => {
-        setHostId(newHostId);
-        try {
-          localStorage.setItem(storageRoomHostKey, newHostId);
-        } catch {}
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateId(),
-            roomId,
-            senderId: 'system',
-            senderName: 'WatchParty Bot',
-            content: `Host ownership was transferred to participant.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          }
-        ]);
-      },
-      onPresenceChange: (activeMembers) => {
-        // Ensure current member is present
-        const hasMe = activeMembers.some(m => m.id === user.id);
-        const merged = hasMe ? activeMembers : [...activeMembers, currentMember];
-        setMembers(merged);
-      },
-      onRequestState: (requesterId) => {
-        // If we are host, broadcast our authoritative state to synchronize late joiners!
-        if (user.id === hostId) {
-          syncChannelRef.current?.broadcastPlayback(playbackStateRef.current);
-          syncChannelRef.current?.broadcastPlaylist(playlist);
-          polls.forEach(p => syncChannelRef.current?.broadcastPoll(p));
-        }
+  callbacksRef.current = {
+    onPlaybackState: (incomingState) => {
+      // Enforce monotonic revision ordering
+      if (incomingState.revision <= playbackStateRef.current.revision) {
+        return;
       }
+
+      if (incomingState.hostId && incomingState.hostId !== hostIdRef.current) {
+        setHostId(incomingState.hostId);
+        hostIdRef.current = incomingState.hostId;
+      }
+
+      setPlaybackState(incomingState);
+      playbackStateRef.current = incomingState;
+
+      // Apply authoritative command to local player if controls are ready
+      if (playerControlsRef.current) {
+        const elapsed = incomingState.playbackStatus === 'playing'
+          ? Math.max(0, (Date.now() - incomingState.updatedAt) / 1000)
+          : 0;
+        const targetPos = Math.max(0, incomingState.positionSeconds + (elapsed * incomingState.playbackRate));
+
+        playerControlsRef.current.applyRemoteAction(
+          incomingState.playbackStatus,
+          targetPos,
+          incomingState.playbackRate
+        );
+      }
+    },
+    onChatMessage: (incomingMsg) => {
+      setMessages((prev) => {
+        if (prev.some(m => m.id === incomingMsg.id)) return prev;
+        return [...prev, incomingMsg];
+      });
+    },
+    onReaction: (incomingReaction) => {
+      setReactions((prev) => {
+        if (prev.some(r => r.id === incomingReaction.id)) return prev;
+        return [...prev, incomingReaction];
+      });
+      setTimeout(() => {
+        setReactions((prev) => prev.filter(r => r.id !== incomingReaction.id));
+      }, 3500);
+    },
+    onPlaylistUpdate: (incomingPlaylist) => {
+      setPlaylist(incomingPlaylist);
+    },
+    onPollUpdate: (incomingPoll) => {
+      setPolls((prev) => {
+        const index = prev.findIndex(p => p.id === incomingPoll.id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = incomingPoll;
+          return updated;
+        }
+        return [...prev, incomingPoll];
+      });
+    },
+    onHostTransfer: (newHostId) => {
+      setHostId(newHostId);
+      hostIdRef.current = newHostId;
+      try {
+        localStorage.setItem(storageRoomHostKey, newHostId);
+      } catch {}
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          roomId,
+          senderId: 'system',
+          senderName: 'WatchParty Bot',
+          content: `Host ownership was transferred to participant.`,
+          timestamp: Date.now(),
+          isSystem: true,
+        }
+      ]);
+    },
+    onPresenceChange: (activeMembers) => {
+      const hasMe = activeMembers.some(m => m.id === user.id);
+      const merged = hasMe ? activeMembers : [...activeMembers, currentMemberRef.current];
+      setMembers(merged);
+    },
+    onRequestState: (_requesterId) => {
+      if (user.id === hostIdRef.current) {
+        syncChannelRef.current?.broadcastPlayback(playbackStateRef.current);
+        syncChannelRef.current?.broadcastPlaylist(playlistRef.current);
+        pollsRef.current.forEach(p => syncChannelRef.current?.broadcastPoll(p));
+        messagesRef.current.filter(m => !m.isSystem).forEach(m => syncChannelRef.current?.broadcastChat(m));
+      }
+    }
+  };
+
+  // Initialize Realtime Channel once per roomId + user.id
+  useEffect(() => {
+    const channel = new RoomSyncChannel(roomId, currentMemberRef.current, {
+      onPlaybackState: (s) => callbacksRef.current.onPlaybackState(s),
+      onChatMessage: (m) => callbacksRef.current.onChatMessage(m),
+      onReaction: (r) => callbacksRef.current.onReaction(r),
+      onPlaylistUpdate: (pl) => callbacksRef.current.onPlaylistUpdate(pl),
+      onPollUpdate: (p) => callbacksRef.current.onPollUpdate(p),
+      onHostTransfer: (h) => callbacksRef.current.onHostTransfer(h),
+      onPresenceChange: (m) => callbacksRef.current.onPresenceChange(m),
+      onRequestState: (req) => callbacksRef.current.onRequestState?.(req),
     });
 
     channel.connect();
@@ -261,7 +307,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       channel.disconnect();
       syncChannelRef.current = null;
     };
-  }, [roomId, user.id, user.name, user.avatarUrl, hostId]);
+  }, [roomId, user.id]);
 
   // Periodic Drift Check (Runs every 1.5s for viewers while playing)
   useEffect(() => {
@@ -340,12 +386,15 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       timestamp: Date.now(),
     };
 
-    setReactions(prev => [...prev, reaction]);
+    setReactions(prev => {
+      if (prev.some(r => r.id === reaction.id)) return prev;
+      return [...prev, reaction];
+    });
     syncChannelRef.current?.broadcastReaction(reaction);
 
     setTimeout(() => {
       setReactions(prev => prev.filter(r => r.id !== reaction.id));
-    }, 2800);
+    }, 3500);
   }, [user.name]);
 
   const addToPlaylist = useCallback((item: Omit<PlaylistItem, 'id' | 'addedAt'>) => {
@@ -428,6 +477,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
   const transferHost = useCallback((newHostId: string) => {
     if (user.id !== hostId) return;
     setHostId(newHostId);
+    hostIdRef.current = newHostId;
     try {
       localStorage.setItem(storageRoomHostKey, newHostId);
     } catch {}

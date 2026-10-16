@@ -46,7 +46,7 @@ export const DiscoverPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 min-h-[calc(100vh-140px)]">
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 min-h-[calc(100vh-140px)] min-w-0">
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-extrabold text-white tracking-tight">Cinema Catalog</h1>
@@ -55,9 +55,9 @@ export const DiscoverPage: React.FC = () => {
         </p>
 
         {/* Public domain / sample metadata notice */}
-        <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-card border border-surface-border text-slate-400 text-xs">
-          <Info className="w-3.5 h-3.5 text-brand-400" />
-          <span>Curated public-domain & open-license video catalog. External catalog APIs (e.g. TMDB) are optional.</span>
+        <div className="mt-3 inline-flex items-start sm:items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-card border border-surface-border text-slate-400 text-xs max-w-full">
+          <Info className="w-3.5 h-3.5 text-brand-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+          <span className="break-words">Curated public-domain & open-license video catalog. External catalog APIs (e.g. TMDB) are optional.</span>
         </div>
       </div>
 
@@ -92,7 +92,7 @@ export const DiscoverPage: React.FC = () => {
       </div>
 
       {/* Genre Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 no-scrollbar w-full max-w-full">
         {GENRES.map((genre) => (
           <button
             key={genre}

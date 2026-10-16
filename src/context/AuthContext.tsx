@@ -12,21 +12,19 @@ interface AuthContextType {
   isSupabaseAuth: boolean;
 }
 
-const GUEST_STORAGE_KEY = 'watchparty_guest_profile';
-
-const AVATAR_COLORS = [
-  'bg-indigo-600',
-  'bg-violet-600',
-  'bg-sky-600',
-  'bg-emerald-600',
-  'bg-rose-600',
-  'bg-amber-600',
-];
+const GUEST_SESSION_KEY = 'watchparty_tab_profile';
+const PREFERRED_NAME_KEY = 'watchparty_preferred_name';
 
 function generateGuestProfile(customName?: string): UserProfile {
-  const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+  let preferredName = customName;
+  if (!preferredName) {
+    try {
+      preferredName = localStorage.getItem(PREFERRED_NAME_KEY) || undefined;
+    } catch {}
+  }
+
   const randomNum = Math.floor(100 + Math.random() * 900);
-  const name = customName?.trim() || `Viewer #${randomNum}`;
+  const name = preferredName || `Viewer #${randomNum}`;
   const id = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   return {
@@ -41,18 +39,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(() => {
+    // Check sessionStorage for current tab identity
     try {
-      const saved = localStorage.getItem(GUEST_STORAGE_KEY);
+      const saved = sessionStorage.getItem(GUEST_SESSION_KEY);
       if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
+    } catch {}
+
     const fresh = generateGuestProfile();
     try {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(fresh));
-    } catch {
-      // ignore
-    }
+      sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(fresh));
+    } catch {}
     return fresh;
   });
 
@@ -99,10 +95,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const profile = generateGuestProfile(customName);
     setUser(profile);
     try {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(profile));
-    } catch {
-      // ignore
-    }
+      sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(profile));
+      if (customName) {
+        localStorage.setItem(PREFERRED_NAME_KEY, customName);
+      }
+    } catch {}
   };
 
   const updateDisplayName = (name: string) => {
@@ -111,10 +108,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updated = { ...user, name: trimmed };
     setUser(updated);
     try {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+      sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(updated));
+      localStorage.setItem(PREFERRED_NAME_KEY, trimmed);
+    } catch {}
   };
 
   const signInWithEmail = async (email: string) => {
@@ -132,10 +128,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const guest = generateGuestProfile();
     setUser(guest);
     try {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(guest));
-    } catch {
-      // ignore
-    }
+      sessionStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(guest));
+      localStorage.removeItem(PREFERRED_NAME_KEY);
+    } catch {}
   };
 
   return (

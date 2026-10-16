@@ -20,13 +20,14 @@ export interface SyncCallbacks {
   onRequestState?: (requesterId: string) => void;
 }
 
-export type ConnectionMode = 'supabase-cloud' | 'local-broadcast' | 'disconnected';
+export type ConnectionMode = 'supabase-cloud' | 'local-relay' | 'local-broadcast' | 'disconnected';
 
 export class RoomSyncChannel {
   private roomId: string;
   private currentMember: RoomMember;
   private callbacks: SyncCallbacks;
   private supabaseChannel: RealtimeChannel | null = null;
+  private socket: WebSocket | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private localPresenceMap: Map<string, RoomMember> = new Map();
@@ -42,7 +43,7 @@ export class RoomSyncChannel {
     if (isSupabaseConfigured && supabase) {
       this.connectSupabase();
     } else {
-      this.connectBroadcastChannel();
+      this.connectLocalRelay();
     }
   }
 
@@ -94,7 +95,6 @@ export class RoomSyncChannel {
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track(this.currentMember);
-          // Request authoritative room state from host
           this.broadcast('request_state', { requesterId: this.currentMember.id });
         }
       });
@@ -102,62 +102,120 @@ export class RoomSyncChannel {
     this.supabaseChannel = channel;
   }
 
+  private connectLocalRelay(): void {
+    try {
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const wsProtocol = isHttps ? 'wss:' : 'ws:';
+      const host = typeof window !== 'undefined' ? window.location.host : 'localhost:5173';
+      const wsUrl = `${wsProtocol}//${host}/watchparty-ws?room=${encodeURIComponent(this.roomId)}`;
+
+      const socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        this.mode = 'local-relay';
+        this.socket = socket;
+        this.localPresenceMap.set(this.currentMember.id, this.currentMember);
+
+        // Start presence heartbeat
+        this.sendHeartbeat();
+        this.heartbeatInterval = setInterval(() => {
+          this.sendHeartbeat();
+          this.pruneStalePresence();
+        }, 3000);
+
+        this.broadcast('request_state', { requesterId: this.currentMember.id });
+        this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleIncomingPayload(data);
+        } catch (e) {
+          console.warn('[Sync] Malformed message:', e);
+        }
+      };
+
+      socket.onerror = () => {
+        // Fallback to BroadcastChannel if WebSocket endpoint is not available
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+          this.connectBroadcastChannel();
+        }
+      };
+
+      socket.onclose = () => {
+        if (this.mode === 'local-relay') {
+          this.connectBroadcastChannel();
+        }
+      };
+    } catch {
+      this.connectBroadcastChannel();
+    }
+  }
+
   private connectBroadcastChannel(): void {
+    if (this.broadcastChannel) return;
     this.mode = 'local-broadcast';
     try {
       this.broadcastChannel = new BroadcastChannel(`watchparty_room_${this.roomId}`);
       this.localPresenceMap.set(this.currentMember.id, this.currentMember);
 
       this.broadcastChannel.onmessage = (event) => {
-        const { type, payload } = event.data || {};
-        if (!type) return;
-
-        switch (type) {
-          case 'playback':
-            this.callbacks.onPlaybackState(payload);
-            break;
-          case 'chat':
-            this.callbacks.onChatMessage(payload);
-            break;
-          case 'reaction':
-            this.callbacks.onReaction(payload);
-            break;
-          case 'playlist':
-            this.callbacks.onPlaylistUpdate(payload);
-            break;
-          case 'poll':
-            this.callbacks.onPollUpdate(payload);
-            break;
-          case 'host_transfer':
-            this.callbacks.onHostTransfer(payload.newHostId);
-            break;
-          case 'request_state':
-            if (this.callbacks.onRequestState) {
-              this.callbacks.onRequestState(payload.requesterId);
-            }
-            break;
-          case 'presence_heartbeat':
-            this.handlePresenceHeartbeat(payload);
-            break;
-          case 'presence_leave':
-            this.localPresenceMap.delete(payload.id);
-            this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
-            break;
-        }
+        const data = event.data || {};
+        this.handleIncomingPayload(data);
       };
 
-      // Periodic presence heartbeat (every 3 seconds)
-      this.sendHeartbeat();
-      this.heartbeatInterval = setInterval(() => {
+      if (!this.heartbeatInterval) {
         this.sendHeartbeat();
-        this.pruneStalePresence();
-      }, 3000);
+        this.heartbeatInterval = setInterval(() => {
+          this.sendHeartbeat();
+          this.pruneStalePresence();
+        }, 3000);
+      }
 
-      // Request authoritative room state from host
       this.broadcast('request_state', { requesterId: this.currentMember.id });
       this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
     } catch (e) {
       console.error('[WatchParty] BroadcastChannel error:', e);
+    }
+  }
+
+  private handleIncomingPayload(data: { type: string; payload: any }): void {
+    const { type, payload } = data;
+    if (!type) return;
+
+    switch (type) {
+      case 'playback':
+        this.callbacks.onPlaybackState(payload);
+        break;
+      case 'chat':
+        this.callbacks.onChatMessage(payload);
+        break;
+      case 'reaction':
+        console.log('[Sync] Received reaction on client:', payload);
+        this.callbacks.onReaction(payload);
+        break;
+      case 'playlist':
+        this.callbacks.onPlaylistUpdate(payload);
+        break;
+      case 'poll':
+        this.callbacks.onPollUpdate(payload);
+        break;
+      case 'host_transfer':
+        this.callbacks.onHostTransfer(payload.newHostId);
+        break;
+      case 'request_state':
+        if (this.callbacks.onRequestState) {
+          this.callbacks.onRequestState(payload.requesterId);
+        }
+        break;
+      case 'presence_heartbeat':
+        this.handlePresenceHeartbeat(payload);
+        break;
+      case 'presence_leave':
+        this.localPresenceMap.delete(payload.id);
+        this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
+        break;
     }
   }
 
@@ -194,7 +252,9 @@ export class RoomSyncChannel {
         event,
         payload,
       });
-    } else if (this.broadcastChannel && this.mode === 'local-broadcast') {
+    } else if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: event, payload }));
+    } else if (this.broadcastChannel) {
       this.broadcastChannel.postMessage({ type: event, payload });
     }
   }
@@ -208,6 +268,7 @@ export class RoomSyncChannel {
   }
 
   public broadcastReaction(reaction: FloatingReaction): void {
+    console.log('[Sync] Broadcasting reaction from client:', reaction);
     this.broadcast('reaction', reaction);
   }
 
@@ -227,7 +288,7 @@ export class RoomSyncChannel {
     this.currentMember = member;
     if (this.mode === 'supabase-cloud' && this.supabaseChannel) {
       this.supabaseChannel.track(this.currentMember);
-    } else if (this.mode === 'local-broadcast') {
+    } else {
       this.sendHeartbeat();
     }
   }
@@ -238,8 +299,14 @@ export class RoomSyncChannel {
       this.heartbeatInterval = null;
     }
 
-    if (this.mode === 'local-broadcast' && this.broadcastChannel) {
-      this.broadcast('presence_leave', { id: this.currentMember.id });
+    this.broadcast('presence_leave', { id: this.currentMember.id });
+
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+
+    if (this.broadcastChannel) {
       this.broadcastChannel.close();
       this.broadcastChannel = null;
     }

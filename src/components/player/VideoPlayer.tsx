@@ -116,9 +116,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Floating Reaction Overlay */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
-        {reactions.map((r) => (
+        {reactions.map((r) => {
+          console.log('[VideoPlayer] Rendering reaction element:', r);
+          return (
           <div
             key={r.id}
+            data-testid="floating-reaction"
             style={{ left: `${r.xPercent}%` }}
             className="absolute bottom-16 animate-float flex flex-col items-center transition-all duration-1000 ease-out"
           >
@@ -129,7 +132,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               {r.senderName}
             </span>
           </div>
-        ))}
+        );})}
       </div>
 
       {/* Buffering Indicator */}
@@ -160,6 +163,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Big Center Play/Pause button on pause */}
       {state.status === 'paused' && !state.hasError && (
         <div 
+          data-testid="center-play-button"
           onClick={togglePlay}
           className={`absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 transition-opacity ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
         >
@@ -233,6 +237,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           {/* Left Controls: Play, Skips, Volume, Time */}
           <div className="flex items-center gap-3">
             <button
+              data-testid="controls-play-button"
               onClick={togglePlay}
               disabled={!canControl}
               title={canControl ? (state.status === 'playing' ? 'Pause' : 'Play') : 'Playback locked to host'}
