@@ -4,7 +4,23 @@ This document describes the automated and manual deployment options for WatchPar
 
 ---
 
-## 1. Vercel Deployment (Recommended)
+## 0. Active Live Production Deployment (Surge.sh)
+
+The production build of WatchParty is currently deployed and live at:
+- **Production URL:** [https://watchparty-live-v1.surge.sh](https://watchparty-live-v1.surge.sh)
+- **Status:** **HEALTHY (200 OK)**
+- **Verification:** Verified with Playwright E2E (`scripts/e2e-deployed-test.js` and `scripts/e2e-deployed-multi-session.js`).
+
+### Updating the Live Surge Deployment:
+```powershell
+npm run build
+Copy-Item dist\index.html dist\200.html
+npx surge dist watchparty-live-v1.surge.sh
+```
+
+---
+
+## 1. Vercel Deployment (Alternative)
 
 ### Option A: Via Vercel CLI (Autonomous / Local)
 1. Ensure the production build succeeds:
