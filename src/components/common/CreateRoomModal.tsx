@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, PlusCircle, Film, Sparkles, ArrowRight, Play } from 'lucide-react';
 import { generateRoomId } from '../../utils/idGenerator';
 import { SAMPLE_CATALOG } from '../../services/catalogService';
-import { detectMediaType } from '../../utils/formatters';
+import { detectMediaType, normalizeCustomMediaUrl } from '../../utils/formatters';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -24,8 +24,8 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ isOpen, onClos
 
     let initialMediaParam = '';
     if (useCustom && customUrl.trim()) {
-      const type = detectMediaType(customUrl.trim());
-      initialMediaParam = `?mediaUrl=${encodeURIComponent(customUrl.trim())}&mediaType=${type}&title=${encodeURIComponent('Custom Stream')}`;
+      const { url: cleanUrl, type } = normalizeCustomMediaUrl(customUrl.trim());
+      initialMediaParam = `?mediaUrl=${encodeURIComponent(cleanUrl)}&mediaType=${type}&title=${encodeURIComponent('Custom Stream')}`;
     } else {
       const movie = SAMPLE_CATALOG.find(m => m.id === selectedMovieId) || SAMPLE_CATALOG[0];
       initialMediaParam = `?mediaUrl=${encodeURIComponent(movie.mediaUrl)}&mediaType=${movie.mediaType}&title=${encodeURIComponent(movie.title)}&mediaId=${movie.id}`;
@@ -120,16 +120,42 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ isOpen, onClos
                 Video Stream URL (MP4, WebM, or YouTube)
               </label>
               <input
-                type="url"
+                type="text"
                 required
-                placeholder="https://commondatastorage.googleapis.com/... or https://youtube.com/..."
+                placeholder="https://vjs.zencdn.net/v/oceans.mp4 or https://youtube.com/watch?v=..."
                 value={customUrl}
                 onChange={(e) => setCustomUrl(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-surface border border-surface-border rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                Direct CORS-compatible video files and official YouTube video links are supported.
+                Direct CORS-compatible video files (MP4, WebM) and official YouTube links (including Shorts) are supported.
               </p>
+
+              {/* Quick Preset Buttons */}
+              <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-slate-400 font-medium">Quick presets:</span>
+                <button
+                  type="button"
+                  onClick={() => setCustomUrl('https://vjs.zencdn.net/v/oceans.mp4')}
+                  className="px-2 py-0.5 rounded bg-surface border border-surface-border hover:border-brand-500 text-[10px] text-slate-300 hover:text-white transition"
+                >
+                  Oceans (HTML5)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomUrl('https://media.w3.org/2010/05/bunny/trailer.mp4')}
+                  className="px-2 py-0.5 rounded bg-surface border border-surface-border hover:border-brand-500 text-[10px] text-slate-300 hover:text-white transition"
+                >
+                  Bunny (HTML5)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomUrl('https://www.youtube.com/watch?v=aqz-KE-bpKQ')}
+                  className="px-2 py-0.5 rounded bg-surface border border-surface-border hover:border-brand-500 text-[10px] text-slate-300 hover:text-white transition"
+                >
+                  Blender (YouTube)
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ListVideo, Plus, Play, Trash2, Film, Video, ExternalLink } from 'lucide-react';
 import { PlaylistItem, MediaType } from '../../types/room';
-import { detectMediaType, formatTime } from '../../utils/formatters';
+import { detectMediaType, formatTime, normalizeCustomMediaUrl } from '../../utils/formatters';
 import { SAMPLE_CATALOG } from '../../services/catalogService';
 
 interface PlaylistDrawerProps {
@@ -33,11 +33,11 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
     e.preventDefault();
     if (!newUrl.trim() || !newTitle.trim()) return;
 
-    const mediaType = detectMediaType(newUrl);
+    const { url: cleanUrl, type: mediaType } = normalizeCustomMediaUrl(newUrl);
     onAddItem({
       roomId: '',
       title: newTitle.trim(),
-      url: newUrl.trim(),
+      url: cleanUrl,
       type: mediaType,
       durationSeconds: 0,
       addedBy: currentUserId,
@@ -177,12 +177,12 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Video Stream or YouTube URL</label>
                 <input
-                  type="url"
+                  type="text"
                   required
                   placeholder="https://... or https://youtube.com/watch?v=..."
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface border border-surface-border rounded-xl text-xs text-white focus:outline-none focus:border-brand-500"
+                  className="w-full px-3 py-2 bg-surface border border-surface-border rounded-xl text-xs text-white focus:outline-none focus:border-brand-500 font-mono"
                 />
               </div>
 

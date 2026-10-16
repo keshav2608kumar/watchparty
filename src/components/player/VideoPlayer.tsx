@@ -101,6 +101,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       {/* Media Engine Element */}
       {mediaType === 'html5' ? (
         <video
+          key={`video-${mediaUrl}`}
           ref={videoRef}
           src={mediaUrl}
           className="w-full h-full object-contain pointer-events-auto"
@@ -109,7 +110,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onClick={togglePlay}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-black">
+        <div 
+          id="watchparty-yt-container"
+          key={`yt-wrap-${mediaUrl}`} 
+          className="w-full h-full flex items-center justify-center bg-black"
+        >
           <div id="watchparty-yt-player" className="w-full h-full pointer-events-auto" />
         </div>
       )}

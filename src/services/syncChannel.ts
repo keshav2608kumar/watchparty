@@ -139,7 +139,11 @@ export class RoomSyncChannel {
         console.log('[Sync] Connected to Global Cloud Relay broker! Subscribed to topic:', topic);
         this.setMode('cloud-relay');
         this.mqttClient = client;
-        client.subscribe(topic, { qos: 0 });
+        client.subscribe(topic, { qos: 0 }, (err) => {
+          if (!err) {
+            this.broadcast('request_state', { requesterId: this.currentMember.id });
+          }
+        });
 
         this.localPresenceMap.set(this.currentMember.id, this.currentMember);
 
@@ -152,7 +156,11 @@ export class RoomSyncChannel {
           }, 3000);
         }
 
-        this.broadcast('request_state', { requesterId: this.currentMember.id });
+        // Retry request_state after 1.2s to guarantee host state capture
+        setTimeout(() => {
+          this.broadcast('request_state', { requesterId: this.currentMember.id });
+        }, 1200);
+
         this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
       });
 

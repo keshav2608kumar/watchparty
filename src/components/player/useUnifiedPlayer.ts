@@ -96,75 +96,96 @@ export function useUnifiedPlayer(
     let intervalId: any = null;
 
     try {
-      if (ytPlayerRef.current) {
+      // If player already exists and is healthy, smoothly switch video
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
         try {
-          ytPlayerRef.current.destroy();
-        } catch {
-          // ignore
+          ytPlayerRef.current.loadVideoById(ytId);
+          setState(prev => ({ ...prev, hasError: false, errorMessage: null }));
+        } catch (e) {
+          console.warn('[WatchParty] loadVideoById failed, re-creating player:', e);
+          ytPlayerRef.current = null;
         }
-        ytPlayerRef.current = null;
       }
 
-      const elementId = 'watchparty-yt-player';
-      ytPlayerRef.current = new window.YT.Player(elementId, {
-        videoId: ytId,
-        playerVars: {
-          autoplay: 0,
-          controls: 0, // We render our custom high-fidelity cinematic controls
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          origin: window.location.origin,
-        },
-        events: {
-          onReady: (event: any) => {
-            setState(prev => ({
-              ...prev,
-              isReady: true,
-              duration: event.target.getDuration() || 0,
-              hasError: false,
-            }));
+      if (!ytPlayerRef.current) {
+        // Ensure container has fresh mount target
+        const container = document.getElementById('watchparty-yt-container');
+        if (container) {
+          container.innerHTML = '<div id="watchparty-yt-player" class="w-full h-full pointer-events-auto"></div>';
+        }
+
+        const elementId = 'watchparty-yt-player';
+        ytPlayerRef.current = new window.YT.Player(elementId, {
+          videoId: ytId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            enablejsapi: 1,
+            origin: window.location.origin,
           },
-          onStateChange: (event: any) => {
-            const playerState = event.data;
-            let currentStatus: PlaybackStatus = 'paused';
+          events: {
+            onReady: (event: any) => {
+              setState(prev => ({
+                ...prev,
+                isReady: true,
+                duration: event.target.getDuration() || 0,
+                hasError: false,
+                errorMessage: null,
+              }));
+            },
+            onStateChange: (event: any) => {
+              const playerState = event.data;
+              let currentStatus: PlaybackStatus = 'paused';
 
-            if (playerState === window.YT.PlayerState.PLAYING) {
-              currentStatus = 'playing';
-            } else if (playerState === window.YT.PlayerState.PAUSED) {
-              currentStatus = 'paused';
-            } else if (playerState === window.YT.PlayerState.BUFFERING) {
-              currentStatus = 'buffering';
-            } else if (playerState === window.YT.PlayerState.ENDED) {
-              currentStatus = 'ended';
-            }
-
-            const curTime = ytPlayerRef.current?.getCurrentTime() || 0;
-
-            setState(prev => ({
-              ...prev,
-              status: currentStatus,
-              currentTime: curTime,
-            }));
-
-            // Notify local action if not initiated by remote sync
-            if (!isSyncingRef.current && onLocalUserAction) {
-              if (currentStatus === 'playing') {
-                onLocalUserAction('play', curTime);
-              } else if (currentStatus === 'paused') {
-                onLocalUserAction('pause', curTime);
+              if (playerState === window.YT.PlayerState.PLAYING) {
+                currentStatus = 'playing';
+              } else if (playerState === window.YT.PlayerState.PAUSED) {
+                currentStatus = 'paused';
+              } else if (playerState === window.YT.PlayerState.BUFFERING) {
+                currentStatus = 'buffering';
+              } else if (playerState === window.YT.PlayerState.ENDED) {
+                currentStatus = 'ended';
               }
-            }
+
+              const curTime = ytPlayerRef.current?.getCurrentTime() || 0;
+
+              setState(prev => ({
+                ...prev,
+                status: currentStatus,
+                currentTime: curTime,
+              }));
+
+              // Notify local action if not initiated by remote sync
+              if (!isSyncingRef.current && onLocalUserAction) {
+                if (currentStatus === 'playing') {
+                  onLocalUserAction('play', curTime);
+                } else if (currentStatus === 'paused') {
+                  onLocalUserAction('pause', curTime);
+                }
+              }
+            },
+            onError: (event: any) => {
+              const code = event?.data;
+              let msg = 'Failed to load YouTube video. Video may be private or restricted.';
+              if (code === 101 || code === 150) {
+                msg = 'The owner of this YouTube video does not allow embedding outside YouTube. Try another video.';
+              } else if (code === 100) {
+                msg = 'This YouTube video was not found (it may be private or deleted).';
+              } else if (code === 2) {
+                msg = 'Invalid YouTube video ID or parameter.';
+              }
+              setState(prev => ({
+                ...prev,
+                hasError: true,
+                errorMessage: msg,
+              }));
+            },
           },
-          onError: () => {
-            setState(prev => ({
-              ...prev,
-              hasError: true,
-              errorMessage: 'Failed to load YouTube video. Video may be private or restricted.',
-            }));
-          },
-        },
-      });
+        });
+      }
 
       // Poll current time for YouTube player
       intervalId = setInterval(() => {
@@ -185,6 +206,12 @@ export function useUnifiedPlayer(
 
     return () => {
       if (intervalId) clearInterval(intervalId);
+    };
+  }, [mediaType, mediaUrl, ytApiLoaded, onLocalUserAction]);
+
+  // Clean up YouTube instance when switching away from youtube
+  useEffect(() => {
+    return () => {
       if (ytPlayerRef.current) {
         try {
           ytPlayerRef.current.destroy();
@@ -194,7 +221,7 @@ export function useUnifiedPlayer(
         ytPlayerRef.current = null;
       }
     };
-  }, [mediaType, mediaUrl, ytApiLoaded, onLocalUserAction]);
+  }, [mediaType]);
 
   // HTML5 Video Event Listeners
   useEffect(() => {
@@ -203,6 +230,12 @@ export function useUnifiedPlayer(
     if (!video) return;
 
     setState(prev => ({ ...prev, isReady: false, hasError: false, errorMessage: null }));
+
+    try {
+      video.load();
+    } catch {
+      // ignore
+    }
 
     const handleLoadedMetadata = () => {
       setState(prev => ({
@@ -246,10 +279,21 @@ export function useUnifiedPlayer(
     };
 
     const handleError = () => {
+      const err = video.error;
+      let msg = 'Unable to stream video file. Format may be unsupported, link expired, or CORS blocked.';
+      if (err) {
+        if (err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+          msg = 'Video format not supported or remote server denied access (HTTP 403 / CORS).';
+        } else if (err.code === MediaError.MEDIA_ERR_NETWORK) {
+          msg = 'Network error while attempting to stream media.';
+        } else if (err.code === MediaError.MEDIA_ERR_DECODE) {
+          msg = 'Video file is corrupted or cannot be decoded by browser.';
+        }
+      }
       setState(prev => ({
         ...prev,
         hasError: true,
-        errorMessage: 'Unable to stream video file. Format may be unsupported or link expired.',
+        errorMessage: msg,
       }));
     };
 

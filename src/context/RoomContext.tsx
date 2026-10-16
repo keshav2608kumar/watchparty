@@ -102,7 +102,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     positionSeconds: 0,
     updatedAt: Date.now(),
     playbackRate: 1.0,
-    revision: 1,
+    revision: initialMedia ? 1 : 0,
   });
 
   const [members, setMembers] = useState<RoomMember[]>([
@@ -196,8 +196,17 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
 
   callbacksRef.current = {
     onPlaybackState: (incomingState) => {
-      // Enforce monotonic revision ordering
-      if (incomingState.revision <= playbackStateRef.current.revision) {
+      // Reject stale events with strictly lower revision
+      if (incomingState.revision < playbackStateRef.current.revision) {
+        return;
+      }
+      // If same revision, ignore only if state is already identical
+      if (
+        incomingState.revision === playbackStateRef.current.revision &&
+        incomingState.mediaUrl === playbackStateRef.current.mediaUrl &&
+        incomingState.playbackStatus === playbackStateRef.current.playbackStatus &&
+        Math.abs(incomingState.positionSeconds - playbackStateRef.current.positionSeconds) < 0.5
+      ) {
         return;
       }
 
@@ -327,7 +336,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
 
       // Only viewers reconcile against the authoritative host
       if (!isHost) {
-        if (analysis.action === 'seek') {
+        if (playerState.status !== 'playing' && playerState.isReady) {
+          playerControlsRef.current.applyRemoteAction('playing', analysis.targetTimeSeconds, authState.playbackRate);
+        } else if (analysis.action === 'seek') {
           playerControlsRef.current.seek(analysis.targetTimeSeconds);
         } else if (analysis.action === 'rate-adjust') {
           playerControlsRef.current.setPlaybackRate(analysis.suggestedRate);
@@ -436,6 +447,10 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     setPlaybackState(newState);
     playbackStateRef.current = newState;
     syncChannelRef.current?.broadcastPlayback(newState);
+
+    if (playerControlsRef.current) {
+      playerControlsRef.current.applyRemoteAction('playing', 0, 1.0);
+    }
   }, [canControl]);
 
   const createPoll = useCallback((poll: Poll) => {
