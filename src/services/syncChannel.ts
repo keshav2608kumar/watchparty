@@ -34,6 +34,7 @@ export class RoomSyncChannel {
   private broadcastChannel: BroadcastChannel | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private localPresenceMap: Map<string, RoomMember> = new Map();
+  private knownMemberIds: Set<string> = new Set();
   public mode: ConnectionMode = 'disconnected';
 
   constructor(roomId: string, member: RoomMember, callbacks: SyncCallbacks) {
@@ -322,12 +323,17 @@ export class RoomSyncChannel {
         this.callbacks.onHostTransfer(payload.newHostId);
         break;
       case 'request_state':
+        this.sendHeartbeat();
         if (this.callbacks.onRequestState) {
           this.callbacks.onRequestState(payload.requesterId);
         }
         break;
       case 'presence_heartbeat':
         this.handlePresenceHeartbeat(payload);
+        if (payload?.id && payload.id !== this.currentMember.id && !this.knownMemberIds.has(payload.id)) {
+          this.knownMemberIds.add(payload.id);
+          this.sendHeartbeat();
+        }
         break;
       case 'presence_leave':
         this.localPresenceMap.delete(payload.id);

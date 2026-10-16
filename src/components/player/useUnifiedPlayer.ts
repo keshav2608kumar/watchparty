@@ -43,6 +43,8 @@ export function useUnifiedPlayer(
   const ytPlayerRef = useRef<any>(null);
   const isSyncingRef = useRef<boolean>(false);
   const isSeekingUserRef = useRef<boolean>(false);
+  const onLocalUserActionRef = useRef(onLocalUserAction);
+  onLocalUserActionRef.current = onLocalUserAction;
 
   const [state, setState] = useState<UnifiedPlayerState>({
     currentTime: 0,
@@ -168,11 +170,11 @@ export function useUnifiedPlayer(
               }));
 
               // Notify local action if not initiated by remote sync
-              if (!isSyncingRef.current && onLocalUserAction) {
+              if (!isSyncingRef.current && onLocalUserActionRef.current) {
                 if (currentStatus === 'playing') {
-                  onLocalUserAction('play', curTime);
+                  onLocalUserActionRef.current('play', curTime);
                 } else if (currentStatus === 'paused') {
-                  onLocalUserAction('pause', curTime);
+                  onLocalUserActionRef.current('pause', curTime);
                 }
               }
             },
@@ -216,7 +218,7 @@ export function useUnifiedPlayer(
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [mediaType, mediaUrl, ytApiLoaded, onLocalUserAction]);
+  }, [mediaType, mediaUrl, ytApiLoaded]);
 
   // Clean up YouTube instance when switching away from youtube
   useEffect(() => {
@@ -240,12 +242,6 @@ export function useUnifiedPlayer(
 
     setState(prev => ({ ...prev, isReady: false, hasError: false, errorMessage: null }));
 
-    try {
-      video.load();
-    } catch {
-      // ignore
-    }
-
     const handleLoadedMetadata = () => {
       setState(prev => ({
         ...prev,
@@ -267,15 +263,15 @@ export function useUnifiedPlayer(
 
     const handlePlay = () => {
       setState(prev => ({ ...prev, status: 'playing' }));
-      if (!isSyncingRef.current && onLocalUserAction) {
-        onLocalUserAction('play', video.currentTime);
+      if (!isSyncingRef.current && onLocalUserActionRef.current) {
+        onLocalUserActionRef.current('play', video.currentTime);
       }
     };
 
     const handlePause = () => {
       setState(prev => ({ ...prev, status: 'paused' }));
-      if (!isSyncingRef.current && onLocalUserAction) {
-        onLocalUserAction('pause', video.currentTime);
+      if (!isSyncingRef.current && onLocalUserActionRef.current) {
+        onLocalUserActionRef.current('pause', video.currentTime);
       }
     };
 
@@ -323,7 +319,7 @@ export function useUnifiedPlayer(
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
     };
-  }, [mediaType, mediaUrl, onLocalUserAction]);
+  }, [mediaType, mediaUrl]);
 
   // Controls API
   const play = useCallback(() => {
@@ -375,8 +371,8 @@ export function useUnifiedPlayer(
 
   const seek = useCallback((seconds: number) => {
     const clamped = Math.max(0, seconds);
-    if (!isSyncingRef.current && onLocalUserAction) {
-      onLocalUserAction('seek', clamped);
+    if (!isSyncingRef.current && onLocalUserActionRef.current) {
+      onLocalUserActionRef.current('seek', clamped);
     }
 
     if (mediaType === 'html5' && videoRef.current) {
@@ -390,7 +386,7 @@ export function useUnifiedPlayer(
     }
 
     setState(prev => ({ ...prev, currentTime: clamped }));
-  }, [mediaType, onLocalUserAction]);
+  }, [mediaType]);
 
   const setVolume = useCallback((val: number) => {
     const clamped = Math.max(0, Math.min(1, val));
@@ -456,9 +452,11 @@ export function useUnifiedPlayer(
   ) => {
     isSyncingRef.current = true;
 
-    // Apply seek
+    // Apply seek only if drift is significant to avoid playback micro-stutters
     if (mediaType === 'html5' && videoRef.current) {
-      videoRef.current.currentTime = positionSeconds;
+      if (Math.abs(videoRef.current.currentTime - positionSeconds) > 0.35) {
+        videoRef.current.currentTime = positionSeconds;
+      }
       videoRef.current.playbackRate = targetRate;
       if (targetStatus === 'playing') {
         const p = videoRef.current.play();
@@ -477,7 +475,10 @@ export function useUnifiedPlayer(
       }
     } else if (mediaType === 'youtube' && ytPlayerRef.current) {
       try {
-        ytPlayerRef.current.seekTo(positionSeconds, true);
+        const curYt = typeof ytPlayerRef.current.getCurrentTime === 'function' ? ytPlayerRef.current.getCurrentTime() : 0;
+        if (Math.abs(curYt - positionSeconds) > 0.5) {
+          ytPlayerRef.current.seekTo(positionSeconds, true);
+        }
         ytPlayerRef.current.setPlaybackRate(targetRate);
         if (targetStatus === 'playing') {
           try {

@@ -200,6 +200,16 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       if (incomingState.revision < playbackStateRef.current.revision) {
         return;
       }
+
+      // Always update hostId if incoming state specifies host
+      if (incomingState.hostId && incomingState.hostId !== hostIdRef.current) {
+        setHostId(incomingState.hostId);
+        hostIdRef.current = incomingState.hostId;
+        try {
+          localStorage.setItem(storageRoomHostKey, incomingState.hostId);
+        } catch {}
+      }
+
       // If same revision, ignore only if state is already identical
       if (
         incomingState.revision === playbackStateRef.current.revision &&
@@ -208,11 +218,6 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
         Math.abs(incomingState.positionSeconds - playbackStateRef.current.positionSeconds) < 0.5
       ) {
         return;
-      }
-
-      if (incomingState.hostId && incomingState.hostId !== hostIdRef.current) {
-        setHostId(incomingState.hostId);
-        hostIdRef.current = incomingState.hostId;
       }
 
       setPlaybackState(incomingState);

@@ -70,7 +70,7 @@ const WatchRoomInner: React.FC = () => {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handleLocalPlayerAction = (action: 'play' | 'pause' | 'seek', position: number) => {
+  const handleLocalPlayerAction = React.useCallback((action: 'play' | 'pause' | 'seek', position: number) => {
     if (action === 'play') {
       broadcastPlaybackCommand('playing', position, playbackState.playbackRate);
     } else if (action === 'pause') {
@@ -78,7 +78,7 @@ const WatchRoomInner: React.FC = () => {
     } else if (action === 'seek') {
       broadcastPlaybackCommand(playbackState.playbackStatus, position, playbackState.playbackRate);
     }
-  };
+  }, [broadcastPlaybackCommand, playbackState.playbackRate, playbackState.playbackStatus]);
 
   const currentMediaTitle = playlist.find(p => p.url === playbackState.mediaUrl)?.title || 'Video Stream';
 
