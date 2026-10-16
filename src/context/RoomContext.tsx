@@ -284,6 +284,11 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       const hasMe = activeMembers.some(m => m.id === user.id);
       const merged = hasMe ? activeMembers : [...activeMembers, currentMemberRef.current];
       setMembers(merged);
+
+      // If host and multiple members are present, ensure late joiners get playback state
+      if (user.id === hostIdRef.current && activeMembers.length > 1) {
+        syncChannelRef.current?.broadcastPlayback(playbackStateRef.current);
+      }
     },
     onRequestState: (_requesterId) => {
       if (user.id === hostIdRef.current) {

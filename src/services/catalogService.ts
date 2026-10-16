@@ -2,6 +2,23 @@ import { CatalogItem, MovieGenre } from '../types/catalog';
 
 export const SAMPLE_CATALOG: CatalogItem[] = [
   {
+    id: 'movie-oceans',
+    title: 'Oceans & Marine Wonders',
+    tagline: 'Plunge into the deep sapphire abyss of oceanic life.',
+    description: 'A breathtaking high-definition underwater exploration through coral reefs, marine wildlife, oceanic predators, and tranquil deep-sea currents.',
+    genre: ['Documentary', 'Short Film'],
+    year: 2022,
+    durationSeconds: 46,
+    rating: 'All Ages (Sample)',
+    posterUrl: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
+    backdropUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
+    mediaType: 'html5',
+    mediaUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
+    featured: true,
+    director: 'Marine Motion Labs',
+    tags: ['Ocean', 'Marine Life', 'Coral Reef', '4K']
+  },
+  {
     id: 'movie-cosmic-tears',
     title: 'Tears of Steel',
     tagline: 'In a dystopian future, nostalgia has teeth.',
@@ -51,23 +68,6 @@ export const SAMPLE_CATALOG: CatalogItem[] = [
     featured: false,
     director: 'Sacha Goedegebure',
     tags: ['Animation', 'Slapstick', 'Forest', 'Funny']
-  },
-  {
-    id: 'movie-oceans',
-    title: 'Oceans & Marine Wonders',
-    tagline: 'Plunge into the deep sapphire abyss of oceanic life.',
-    description: 'A breathtaking high-definition underwater exploration through coral reefs, marine wildlife, oceanic predators, and tranquil deep-sea currents.',
-    genre: ['Documentary', 'Short Film'],
-    year: 2022,
-    durationSeconds: 46,
-    rating: 'All Ages (Sample)',
-    posterUrl: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
-    backdropUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
-    mediaType: 'html5',
-    mediaUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
-    featured: true,
-    director: 'Marine Motion Labs',
-    tags: ['Ocean', 'Marine Life', 'Coral Reef', '4K']
   },
   {
     id: 'movie-elephants-dream',

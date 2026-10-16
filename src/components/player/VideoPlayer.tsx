@@ -170,11 +170,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div 
           data-testid="center-play-button"
           onClick={togglePlay}
-          className={`absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 transition-opacity ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] z-10 transition-opacity ${mediaType === 'youtube' ? 'pointer-events-none' : ''} ${canControl ? 'cursor-pointer' : 'cursor-default'}`}
         >
-          <div className="w-20 h-20 rounded-full bg-brand-600/90 text-white flex items-center justify-center shadow-glow-brand hover:scale-110 active:scale-95 transition-all">
+          <div className="w-20 h-20 rounded-full bg-brand-600/90 text-white flex items-center justify-center shadow-glow-brand hover:scale-110 active:scale-95 transition-all pointer-events-auto">
             <Play className="w-9 h-9 fill-current ml-1" />
           </div>
+        </div>
+      )}
+
+      {/* Autoplay Muted Notice */}
+      {state.isMuted && state.status === 'playing' && (
+        <div 
+          onClick={controls.toggleMute}
+          className="absolute top-16 left-1/2 -translate-x-1/2 bg-brand-600/90 hover:bg-brand-500 text-white px-4 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md cursor-pointer flex items-center gap-2 z-20 animate-bounce transition"
+        >
+          <VolumeX className="w-4 h-4 text-amber-300" />
+          <span>Click to Unmute Audio</span>
         </div>
       )}
 

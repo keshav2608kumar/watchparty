@@ -28,10 +28,18 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({ isOpen, onClose })
       return;
     }
 
+    let queryParams = '';
     // Check if user pasted a full URL
     if (clean.includes('/room/')) {
       const parts = clean.split('/room/');
-      clean = parts[parts.length - 1].split('?')[0].split('#')[0].trim();
+      const afterRoom = parts[parts.length - 1];
+      const qIdx = afterRoom.indexOf('?');
+      if (qIdx >= 0) {
+        queryParams = afterRoom.substring(qIdx);
+        clean = afterRoom.substring(0, qIdx).split('#')[0].trim();
+      } else {
+        clean = afterRoom.split('#')[0].trim();
+      }
     }
 
     if (!isValidRoomId(clean)) {
@@ -44,7 +52,7 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({ isOpen, onClose })
     }
 
     onClose();
-    navigate(`/room/${clean}`);
+    navigate(`/room/${clean}${queryParams}`);
   };
 
   return (

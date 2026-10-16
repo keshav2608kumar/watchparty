@@ -25,6 +25,7 @@ import { PollsPanel } from '../components/room/PollsPanel';
 import { InviteModal } from '../components/room/InviteModal';
 import { useAuth } from '../context/AuthContext';
 import { MediaType } from '../types/room';
+import { normalizeCustomMediaUrl } from '../utils/formatters';
 
 type ActiveTab = 'chat' | 'audience' | 'queue' | 'polls';
 
@@ -398,13 +399,15 @@ export const WatchRoomPage: React.FC = () => {
     return <div className="p-10 text-center text-white">Invalid Room ID</div>;
   }
 
-  const mediaUrl = searchParams.get('mediaUrl') || undefined;
-  const mediaType = (searchParams.get('mediaType') as MediaType) || undefined;
-  const title = searchParams.get('title') || undefined;
-  const mediaId = searchParams.get('mediaId') || undefined;
+  const rawUrl = searchParams.get('mediaUrl') || '';
+  const parsed = rawUrl ? normalizeCustomMediaUrl(rawUrl) : null;
+  const mediaType = (searchParams.get('mediaType') as MediaType) || (parsed ? parsed.type : undefined);
+  const mediaUrl = parsed ? parsed.url : (rawUrl || undefined);
+  const title = searchParams.get('title') || (mediaUrl ? 'Custom Video Stream' : undefined);
+  const mediaId = searchParams.get('mediaId') || 'init-media';
 
-  const initialMedia = mediaUrl && mediaType && title
-    ? { id: mediaId || 'init-media', url: mediaUrl, type: mediaType, title }
+  const initialMedia = mediaUrl && mediaType
+    ? { id: mediaId, url: mediaUrl, type: mediaType, title: title || 'Video Stream' }
     : undefined;
 
   return (

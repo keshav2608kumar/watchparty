@@ -67,6 +67,13 @@ export function useUnifiedPlayer(
       return;
     }
 
+    const checkInterval = setInterval(() => {
+      if (window.YT && window.YT.Player) {
+        setYtApiLoaded(true);
+        clearInterval(checkInterval);
+      }
+    }, 100);
+
     const existingScript = document.getElementById('youtube-iframe-api');
     if (!existingScript) {
       const tag = document.createElement('script');
@@ -81,6 +88,8 @@ export function useUnifiedPlayer(
       if (previousOnReady) previousOnReady();
       setYtApiLoaded(true);
     };
+
+    return () => clearInterval(checkInterval);
   }, [mediaType]);
 
   // Initialize YouTube player
@@ -119,7 +128,7 @@ export function useUnifiedPlayer(
           videoId: ytId,
           playerVars: {
             autoplay: 0,
-            controls: 0,
+            controls: 1,
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
@@ -325,16 +334,27 @@ export function useUnifiedPlayer(
         if (p !== undefined) {
           p.catch(e => {
             console.warn('[WatchParty] HTML5 play blocked:', e);
-            if (e.name === 'NotAllowedError') {
-              vid.muted = true;
-              vid.play().catch(err => console.warn('[WatchParty] Muted play blocked:', err));
-            }
+            vid.muted = true;
+            vid.play().catch(err => console.warn('[WatchParty] Muted play blocked:', err));
+            setState(prev => ({ ...prev, isMuted: true }));
           });
         }
       }
     } else if (mediaType === 'youtube' && ytPlayerRef.current) {
       try {
         ytPlayerRef.current.playVideo();
+        setTimeout(() => {
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
+            const st = ytPlayerRef.current.getPlayerState();
+            if (st !== window.YT.PlayerState.PLAYING && st !== window.YT.PlayerState.BUFFERING) {
+              try {
+                ytPlayerRef.current.mute();
+                ytPlayerRef.current.playVideo();
+                setState(prev => ({ ...prev, isMuted: true }));
+              } catch {}
+            }
+          }
+        }, 350);
       } catch (e) {
         console.warn('[WatchParty] YT play error:', e);
       }
@@ -441,7 +461,17 @@ export function useUnifiedPlayer(
       videoRef.current.currentTime = positionSeconds;
       videoRef.current.playbackRate = targetRate;
       if (targetStatus === 'playing') {
-        videoRef.current.play().catch(() => {});
+        const p = videoRef.current.play();
+        if (p !== undefined) {
+          p.catch(e => {
+            console.warn('[WatchParty] HTML5 remote play blocked, trying muted:', e);
+            if (videoRef.current) {
+              videoRef.current.muted = true;
+              videoRef.current.play().catch(err => console.warn('[WatchParty] Muted play blocked:', err));
+              setState(prev => ({ ...prev, isMuted: true }));
+            }
+          });
+        }
       } else if (targetStatus === 'paused') {
         videoRef.current.pause();
       }
@@ -450,7 +480,13 @@ export function useUnifiedPlayer(
         ytPlayerRef.current.seekTo(positionSeconds, true);
         ytPlayerRef.current.setPlaybackRate(targetRate);
         if (targetStatus === 'playing') {
-          ytPlayerRef.current.playVideo();
+          try {
+            ytPlayerRef.current.playVideo();
+          } catch {
+            ytPlayerRef.current.mute();
+            ytPlayerRef.current.playVideo();
+            setState(prev => ({ ...prev, isMuted: true }));
+          }
         } else if (targetStatus === 'paused') {
           ytPlayerRef.current.pauseVideo();
         }

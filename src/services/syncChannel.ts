@@ -53,13 +53,16 @@ export class RoomSyncChannel {
       return;
     }
 
+    // Always connect local broadcast channel for instant multi-tab sync
+    this.connectBroadcastChannel();
+
     const isLocalhost = typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     if (isLocalhost) {
       this.connectLocalRelay();
     } else {
-      this.connectCloudRelay();
+      this.connectCloudRelay(0);
     }
   }
 
@@ -118,27 +121,52 @@ export class RoomSyncChannel {
     this.supabaseChannel = channel;
   }
 
-  private connectCloudRelay(): void {
-    if (this.mqttClient) return;
+  private readonly brokers: string[] = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+  ];
+  private currentBrokerIdx: number = 0;
+
+  private connectCloudRelay(brokerIdx = 0): void {
+    if (this.mqttClient && this.mqttClient.connected) return;
+    this.currentBrokerIdx = brokerIdx;
+
+    const brokerUrl = this.brokers[brokerIdx % this.brokers.length];
+    const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
+    const clientId = `wp_${this.currentMember.id.substring(0, 8)}_${Math.random().toString(36).substring(2, 7)}`;
+
+    console.log(`[Sync] Connecting to Cloud Relay (${brokerUrl}) for room ${this.roomId}`);
 
     try {
-      const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
-      const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
-      const clientId = `wp_${this.currentMember.id.substring(0, 8)}_${Math.random().toString(36).substring(2, 7)}`;
-
-      console.log('[Sync] Connecting to Global Cloud Relay broker at:', brokerUrl);
+      if (this.mqttClient) {
+        try { this.mqttClient.end(true); } catch {}
+        this.mqttClient = null;
+      }
 
       const client = mqtt.connect(brokerUrl, {
         clientId,
         clean: true,
         connectTimeout: 8000,
         keepalive: 30,
+        reconnectPeriod: 2500,
       });
 
+      this.mqttClient = client;
+
+      // Failover timer: if broker fails to connect within 8s, try alternative broker
+      const failoverTimeout = setTimeout(() => {
+        if (!client.connected && this.mode !== 'supabase-cloud') {
+          console.warn(`[Sync] Broker ${brokerUrl} connection timed out. Trying fallback broker...`);
+          try { client.end(true); } catch {}
+          this.connectCloudRelay(brokerIdx + 1);
+        }
+      }, 8000);
+
       client.on('connect', () => {
-        console.log('[Sync] Connected to Global Cloud Relay broker! Subscribed to topic:', topic);
+        clearTimeout(failoverTimeout);
+        console.log(`[Sync] Connected to Cloud Broker (${brokerUrl})! Subscribed to topic: ${topic}`);
         this.setMode('cloud-relay');
-        this.mqttClient = client;
+
         client.subscribe(topic, { qos: 0 }, (err) => {
           if (!err) {
             this.broadcast('request_state', { requesterId: this.currentMember.id });
@@ -175,20 +203,18 @@ export class RoomSyncChannel {
       });
 
       client.on('error', (err) => {
-        console.warn('[Sync] Cloud MQTT error:', err);
-        if (this.mode !== 'cloud-relay') {
-          this.connectBroadcastChannel();
-        }
+        console.warn(`[Sync] Cloud MQTT error on ${brokerUrl}:`, err);
       });
 
       client.on('close', () => {
-        if (this.mode === 'cloud-relay') {
-          this.connectBroadcastChannel();
-        }
+        console.log('[Sync] Cloud MQTT closed, will auto-reconnect...');
+      });
+
+      client.on('offline', () => {
+        console.log('[Sync] Cloud MQTT offline, reconnecting...');
       });
     } catch (e) {
       console.warn('[Sync] Failed to initialize cloud relay:', e);
-      this.connectBroadcastChannel();
     }
   }
 
@@ -244,13 +270,13 @@ export class RoomSyncChannel {
 
   private connectBroadcastChannel(): void {
     if (this.broadcastChannel) return;
-    this.setMode('local-broadcast');
     try {
       this.broadcastChannel = new BroadcastChannel(`watchparty_room_${this.roomId}`);
       this.localPresenceMap.set(this.currentMember.id, this.currentMember);
 
       this.broadcastChannel.onmessage = (event) => {
         const data = event.data || {};
+        if (data.senderId && data.senderId === this.currentMember.id) return;
         this.handleIncomingPayload(data);
       };
 
@@ -264,6 +290,9 @@ export class RoomSyncChannel {
 
       this.broadcast('request_state', { requesterId: this.currentMember.id });
       this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
+      if (this.mode === 'disconnected') {
+        this.setMode('local-broadcast');
+      }
     } catch (e) {
       console.error('[WatchParty] BroadcastChannel error:', e);
     }
@@ -315,7 +344,7 @@ export class RoomSyncChannel {
 
   private handlePresenceHeartbeat(member: RoomMember): void {
     if (!member?.id) return;
-    this.localPresenceMap.set(member.id, member);
+    this.localPresenceMap.set(member.id, { ...member, lastActive: Date.now() });
     this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
   }
 
@@ -336,19 +365,45 @@ export class RoomSyncChannel {
   private broadcast(event: string, payload: unknown): void {
     const packet = { type: event, payload, senderId: this.currentMember.id };
 
+    // 1. Supabase Cloud if configured
     if (this.supabaseChannel && this.mode === 'supabase-cloud') {
-      this.supabaseChannel.send({
-        type: 'broadcast',
-        event,
-        payload,
-      });
-    } else if (this.mqttClient && this.mode === 'cloud-relay') {
-      const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
-      this.mqttClient.publish(topic, JSON.stringify(packet));
-    } else if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(packet));
-    } else if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage(packet);
+      try {
+        this.supabaseChannel.send({
+          type: 'broadcast',
+          event,
+          payload,
+        });
+      } catch (err) {
+        console.warn('[Sync] Supabase broadcast error:', err);
+      }
+    }
+
+    // 2. Cloud MQTT (cross-device/internet sync)
+    if (this.mqttClient && this.mqttClient.connected) {
+      try {
+        const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
+        this.mqttClient.publish(topic, JSON.stringify(packet));
+      } catch (err) {
+        console.warn('[Sync] MQTT publish error:', err);
+      }
+    }
+
+    // 3. Local WebSocket relay
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      try {
+        this.socket.send(JSON.stringify(packet));
+      } catch (err) {
+        console.warn('[Sync] Socket send error:', err);
+      }
+    }
+
+    // 4. Local BroadcastChannel (same-browser tab sync)
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage(packet);
+      } catch (err) {
+        console.warn('[Sync] BroadcastChannel post error:', err);
+      }
     }
   }
 

@@ -9,7 +9,9 @@ interface InviteModalProps {
 
 export const InviteModal: React.FC<InviteModalProps> = ({ roomId, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
-  const inviteUrl = `${window.location.origin}/room/${roomId}`;
+  const inviteUrl = typeof window !== 'undefined' 
+    ? window.location.href.split('#')[0] 
+    : `/room/${roomId}`;
 
   if (!isOpen) return null;
 
