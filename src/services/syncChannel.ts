@@ -8,6 +8,7 @@ import {
 } from '../types/room';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import mqtt, { MqttClient } from 'mqtt';
 
 export interface SyncCallbacks {
   onPlaybackState: (state: AuthoritativePlaybackState) => void;
@@ -18,15 +19,17 @@ export interface SyncCallbacks {
   onHostTransfer: (newHostId: string) => void;
   onPresenceChange: (members: RoomMember[]) => void;
   onRequestState?: (requesterId: string) => void;
+  onConnectionModeChange?: (mode: ConnectionMode) => void;
 }
 
-export type ConnectionMode = 'supabase-cloud' | 'local-relay' | 'local-broadcast' | 'disconnected';
+export type ConnectionMode = 'supabase-cloud' | 'cloud-relay' | 'local-relay' | 'local-broadcast' | 'disconnected';
 
 export class RoomSyncChannel {
   private roomId: string;
   private currentMember: RoomMember;
   private callbacks: SyncCallbacks;
   private supabaseChannel: RealtimeChannel | null = null;
+  private mqttClient: MqttClient | null = null;
   private socket: WebSocket | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -39,17 +42,30 @@ export class RoomSyncChannel {
     this.callbacks = callbacks;
   }
 
+  private setMode(newMode: ConnectionMode): void {
+    this.mode = newMode;
+    this.callbacks.onConnectionModeChange?.(newMode);
+  }
+
   public connect(): void {
     if (isSupabaseConfigured && supabase) {
       this.connectSupabase();
-    } else {
+      return;
+    }
+
+    const isLocalhost = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (isLocalhost) {
       this.connectLocalRelay();
+    } else {
+      this.connectCloudRelay();
     }
   }
 
   private connectSupabase(): void {
     if (!supabase) return;
-    this.mode = 'supabase-cloud';
+    this.setMode('supabase-cloud');
 
     const channel = supabase.channel(`watchparty_room:${this.roomId}`, {
       config: {
@@ -102,6 +118,72 @@ export class RoomSyncChannel {
     this.supabaseChannel = channel;
   }
 
+  private connectCloudRelay(): void {
+    if (this.mqttClient) return;
+
+    try {
+      const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+      const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
+      const clientId = `wp_${this.currentMember.id.substring(0, 8)}_${Math.random().toString(36).substring(2, 7)}`;
+
+      console.log('[Sync] Connecting to Global Cloud Relay broker at:', brokerUrl);
+
+      const client = mqtt.connect(brokerUrl, {
+        clientId,
+        clean: true,
+        connectTimeout: 8000,
+        keepalive: 30,
+      });
+
+      client.on('connect', () => {
+        console.log('[Sync] Connected to Global Cloud Relay broker! Subscribed to topic:', topic);
+        this.setMode('cloud-relay');
+        this.mqttClient = client;
+        client.subscribe(topic, { qos: 0 });
+
+        this.localPresenceMap.set(this.currentMember.id, this.currentMember);
+
+        // Start presence heartbeat
+        this.sendHeartbeat();
+        if (!this.heartbeatInterval) {
+          this.heartbeatInterval = setInterval(() => {
+            this.sendHeartbeat();
+            this.pruneStalePresence();
+          }, 3000);
+        }
+
+        this.broadcast('request_state', { requesterId: this.currentMember.id });
+        this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
+      });
+
+      client.on('message', (_topic, message) => {
+        try {
+          const raw = JSON.parse(message.toString());
+          if (raw.senderId && raw.senderId === this.currentMember.id) return;
+          this.handleIncomingPayload(raw);
+        } catch (e) {
+          console.warn('[Sync] Malformed cloud message:', e);
+        }
+      });
+
+      client.on('error', (err) => {
+        console.warn('[Sync] Cloud MQTT error:', err);
+        if (this.mode !== 'cloud-relay') {
+          this.connectBroadcastChannel();
+        }
+      });
+
+      client.on('close', () => {
+        if (this.mode === 'cloud-relay') {
+          this.connectBroadcastChannel();
+        }
+      });
+    } catch (e) {
+      console.warn('[Sync] Failed to initialize cloud relay:', e);
+      this.connectBroadcastChannel();
+    }
+  }
+
   private connectLocalRelay(): void {
     try {
       const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -112,7 +194,7 @@ export class RoomSyncChannel {
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
-        this.mode = 'local-relay';
+        this.setMode('local-relay');
         this.socket = socket;
         this.localPresenceMap.set(this.currentMember.id, this.currentMember);
 
@@ -137,25 +219,24 @@ export class RoomSyncChannel {
       };
 
       socket.onerror = () => {
-        // Fallback to BroadcastChannel if WebSocket endpoint is not available
         if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-          this.connectBroadcastChannel();
+          this.connectCloudRelay();
         }
       };
 
       socket.onclose = () => {
         if (this.mode === 'local-relay') {
-          this.connectBroadcastChannel();
+          this.connectCloudRelay();
         }
       };
     } catch {
-      this.connectBroadcastChannel();
+      this.connectCloudRelay();
     }
   }
 
   private connectBroadcastChannel(): void {
     if (this.broadcastChannel) return;
-    this.mode = 'local-broadcast';
+    this.setMode('local-broadcast');
     try {
       this.broadcastChannel = new BroadcastChannel(`watchparty_room_${this.roomId}`);
       this.localPresenceMap.set(this.currentMember.id, this.currentMember);
@@ -180,7 +261,7 @@ export class RoomSyncChannel {
     }
   }
 
-  private handleIncomingPayload(data: { type: string; payload: any }): void {
+  private handleIncomingPayload(data: any): void {
     const { type, payload } = data;
     if (!type) return;
 
@@ -192,7 +273,6 @@ export class RoomSyncChannel {
         this.callbacks.onChatMessage(payload);
         break;
       case 'reaction':
-        console.log('[Sync] Received reaction on client:', payload);
         this.callbacks.onReaction(payload);
         break;
       case 'playlist':
@@ -246,16 +326,21 @@ export class RoomSyncChannel {
   }
 
   private broadcast(event: string, payload: unknown): void {
+    const packet = { type: event, payload, senderId: this.currentMember.id };
+
     if (this.supabaseChannel && this.mode === 'supabase-cloud') {
       this.supabaseChannel.send({
         type: 'broadcast',
         event,
         payload,
       });
+    } else if (this.mqttClient && this.mode === 'cloud-relay') {
+      const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
+      this.mqttClient.publish(topic, JSON.stringify(packet));
     } else if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: event, payload }));
+      this.socket.send(JSON.stringify(packet));
     } else if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage({ type: event, payload });
+      this.broadcastChannel.postMessage(packet);
     }
   }
 
@@ -268,7 +353,6 @@ export class RoomSyncChannel {
   }
 
   public broadcastReaction(reaction: FloatingReaction): void {
-    console.log('[Sync] Broadcasting reaction from client:', reaction);
     this.broadcast('reaction', reaction);
   }
 
@@ -301,6 +385,18 @@ export class RoomSyncChannel {
 
     this.broadcast('presence_leave', { id: this.currentMember.id });
 
+    if (this.mqttClient) {
+      try {
+        const topic = `watchparty/v1/rooms/${encodeURIComponent(this.roomId)}`;
+        const packet = { type: 'presence_leave', payload: { id: this.currentMember.id }, senderId: this.currentMember.id };
+        this.mqttClient.publish(topic, JSON.stringify(packet));
+        this.mqttClient.end();
+      } catch {
+        // ignore
+      }
+      this.mqttClient = null;
+    }
+
     if (this.socket) {
       this.socket.close();
       this.socket = null;
@@ -316,6 +412,6 @@ export class RoomSyncChannel {
       this.supabaseChannel = null;
     }
 
-    this.mode = 'disconnected';
+    this.setMode('disconnected');
   }
 }

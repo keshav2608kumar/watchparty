@@ -275,9 +275,19 @@ export function useUnifiedPlayer(
   // Controls API
   const play = useCallback(() => {
     if (mediaType === 'html5') {
-      videoRef.current?.play().catch(e => {
-        console.warn('[WatchParty] HTML5 play blocked:', e);
-      });
+      const vid = videoRef.current;
+      if (vid) {
+        const p = vid.play();
+        if (p !== undefined) {
+          p.catch(e => {
+            console.warn('[WatchParty] HTML5 play blocked:', e);
+            if (e.name === 'NotAllowedError') {
+              vid.muted = true;
+              vid.play().catch(err => console.warn('[WatchParty] Muted play blocked:', err));
+            }
+          });
+        }
+      }
     } else if (mediaType === 'youtube' && ytPlayerRef.current) {
       try {
         ytPlayerRef.current.playVideo();

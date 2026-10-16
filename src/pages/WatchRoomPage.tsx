@@ -115,13 +115,19 @@ const WatchRoomInner: React.FC = () => {
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface border border-surface-border">
             <span
               className={`w-2 h-2 rounded-full ${
-                connectionMode === 'supabase-cloud'
+                connectionMode === 'supabase-cloud' || connectionMode === 'cloud-relay'
                   ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
                   : 'bg-brand-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]'
               }`}
             />
             <span className="text-slate-300">
-              {connectionMode === 'supabase-cloud' ? 'Cloud Realtime' : 'Local Multi-Tab Sync'}
+              {connectionMode === 'supabase-cloud'
+                ? 'Cloud Realtime'
+                : connectionMode === 'cloud-relay'
+                ? 'Global Cloud Relay'
+                : connectionMode === 'local-relay'
+                ? 'Local Network Relay'
+                : 'Local Multi-Tab Sync'}
             </span>
           </div>
         </div>

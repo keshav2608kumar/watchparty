@@ -89,7 +89,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
 
   const canControl = canUserControlPlayback(user.id, hostId, settings);
 
-  const defaultMediaUrl = initialMedia?.url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4';
+  const defaultMediaUrl = initialMedia?.url || 'https://vjs.zencdn.net/v/oceans.mp4';
   const defaultMediaType = initialMedia?.type || 'html5';
 
   const [playbackState, setPlaybackState] = useState<AuthoritativePlaybackState>({
@@ -132,10 +132,10 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     {
       id: 'queue-1',
       roomId,
-      title: initialMedia?.title || 'Tears of Steel (Sci-Fi Short)',
+      title: initialMedia?.title || 'Oceans (HD Demo)',
       url: defaultMediaUrl,
       type: defaultMediaType,
-      durationSeconds: 734,
+      durationSeconds: 46,
       addedBy: user.id,
       addedByName: user.name,
       addedAt: Date.now(),
@@ -297,6 +297,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       onHostTransfer: (h) => callbacksRef.current.onHostTransfer(h),
       onPresenceChange: (m) => callbacksRef.current.onPresenceChange(m),
       onRequestState: (req) => callbacksRef.current.onRequestState?.(req),
+      onConnectionModeChange: (mode) => setConnectionMode(mode),
     });
 
     channel.connect();
