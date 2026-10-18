@@ -36,6 +36,8 @@ const WatchRoomInner: React.FC = () => {
   const {
     roomId,
     playbackState,
+    activeResolvedMediaUrl,
+    hasMatchingLocalFile,
     members,
     messages,
     playlist,
@@ -53,6 +55,7 @@ const WatchRoomInner: React.FC = () => {
     addToPlaylist,
     removeFromPlaylist,
     playFromPlaylist,
+    loadLocalVideo,
     createPoll,
     votePoll,
     transferHost,
@@ -213,14 +216,19 @@ const WatchRoomInner: React.FC = () => {
           <div className="w-full max-w-5xl mx-auto">
             <VideoPlayer
               mediaType={playbackState.mediaType}
-              mediaUrl={playbackState.mediaUrl}
-              title={currentMediaTitle}
+              mediaUrl={activeResolvedMediaUrl}
+              title={playbackState.localFileName || currentMediaTitle}
               isHost={isHost}
               canControl={canControl}
               reactions={reactions}
               onLocalUserAction={handleLocalPlayerAction}
               onPlayerControlsReady={registerPlayer}
               syncDrift={syncDrift}
+              isLocalFile={playbackState.isLocalFile || playbackState.mediaUrl.startsWith('local://')}
+              localFileName={playbackState.localFileName}
+              localFileSize={playbackState.localFileSize}
+              hasMatchingLocalFile={hasMatchingLocalFile}
+              onSelectLocalFile={loadLocalVideo}
             />
 
             {/* Video Sub-bar: Title, Reactions Picker, and Telemetry */}
@@ -356,6 +364,7 @@ const WatchRoomInner: React.FC = () => {
                 onPlayItem={playFromPlaylist}
                 onAddItem={addToPlaylist}
                 onRemoveItem={removeFromPlaylist}
+                onLoadLocalVideo={loadLocalVideo}
                 currentUserId={user.id}
                 currentUserName={user.name}
               />

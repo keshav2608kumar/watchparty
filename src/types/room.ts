@@ -12,6 +12,9 @@ export interface AuthoritativePlaybackState {
   updatedAt: number; // UTC timestamp ms
   playbackRate: number;
   revision: number;
+  isLocalFile?: boolean;
+  localFileName?: string;
+  localFileSize?: number;
 }
 
 export interface UserProfile {
@@ -57,6 +60,9 @@ export interface PlaylistItem {
   addedBy: string;
   addedByName: string;
   addedAt: number;
+  isLocalFile?: boolean;
+  localFileName?: string;
+  localFileSize?: number;
 }
 
 export interface PollOption {

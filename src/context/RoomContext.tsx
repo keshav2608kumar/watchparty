@@ -16,11 +16,14 @@ import { RoomSyncChannel, ConnectionMode, SyncCallbacks } from '../services/sync
 import { useAuth } from './AuthContext';
 import { analyzeDrift, canUserControlPlayback } from '../utils/driftCalculator';
 import { generateId } from '../utils/idGenerator';
+import { formatFileSize } from '../utils/formatters';
 import { PlayerControls, UnifiedPlayerState } from '../components/player/useUnifiedPlayer';
 
 interface RoomContextType {
   roomId: string;
   playbackState: AuthoritativePlaybackState;
+  activeResolvedMediaUrl: string;
+  hasMatchingLocalFile: boolean;
   members: RoomMember[];
   messages: ChatMessage[];
   playlist: PlaylistItem[];
@@ -38,6 +41,7 @@ interface RoomContextType {
   addToPlaylist: (item: Omit<PlaylistItem, 'id' | 'addedAt'>) => void;
   removeFromPlaylist: (id: string) => void;
   playFromPlaylist: (item: PlaylistItem) => void;
+  loadLocalVideo: (file: File, playNow?: boolean) => void;
   createPoll: (poll: Poll) => void;
   votePoll: (pollId: string, optionId: string) => void;
   transferHost: (newHostId: string) => void;
@@ -151,6 +155,28 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>('disconnected');
   const [syncDrift, setSyncDrift] = useState<number>(0);
+  const [localFilesMap, setLocalFilesMap] = useState<Map<string, { file: File; blobUrl: string }>>(new Map());
+
+  // Resolves local:// protocol to the user's active local blob: URL if selected
+  const activeResolvedMediaUrl = React.useMemo(() => {
+    const isLocal = playbackState.isLocalFile || playbackState.mediaUrl.startsWith('local://');
+    if (isLocal) {
+      const name = playbackState.localFileName || decodeURIComponent(playbackState.mediaUrl.replace('local://', ''));
+      const match = localFilesMap.get(name) || localFilesMap.get(name.toLowerCase());
+      if (match) {
+        return match.blobUrl;
+      }
+      return '';
+    }
+    return playbackState.mediaUrl;
+  }, [playbackState.isLocalFile, playbackState.mediaUrl, playbackState.localFileName, localFilesMap]);
+
+  const hasMatchingLocalFile = React.useMemo(() => {
+    const isLocal = playbackState.isLocalFile || playbackState.mediaUrl.startsWith('local://');
+    if (!isLocal) return true;
+    const name = playbackState.localFileName || decodeURIComponent(playbackState.mediaUrl.replace('local://', ''));
+    return Boolean(localFilesMap.get(name) || localFilesMap.get(name.toLowerCase()));
+  }, [playbackState.isLocalFile, playbackState.mediaUrl, playbackState.localFileName, localFilesMap]);
 
   // References for player control and synchronization
   const playerControlsRef = useRef<PlayerControls | null>(null);
@@ -507,6 +533,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       playbackRate: 1.0,
       updatedAt: Date.now(),
       revision: nextRevision,
+      isLocalFile: item.isLocalFile,
+      localFileName: item.localFileName,
+      localFileSize: item.localFileSize,
     };
 
     setPlaybackState(newState);
@@ -517,6 +546,68 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       playerControlsRef.current.applyRemoteAction('playing', 0, 1.0);
     }
   }, [canControl]);
+
+  const loadLocalVideo = useCallback((file: File, playNow: boolean = true) => {
+    const blobUrl = URL.createObjectURL(file);
+    setLocalFilesMap(prev => {
+      const next = new Map(prev);
+      next.set(file.name, { file, blobUrl });
+      next.set(file.name.toLowerCase(), { file, blobUrl });
+      return next;
+    });
+
+    const localUrl = `local://${encodeURIComponent(file.name)}`;
+    const playlistId = generateId();
+    const item: PlaylistItem = {
+      id: playlistId,
+      roomId,
+      title: file.name,
+      url: localUrl,
+      type: 'html5',
+      durationSeconds: 0,
+      addedBy: user.id,
+      addedByName: user.name,
+      addedAt: Date.now(),
+      isLocalFile: true,
+      localFileName: file.name,
+      localFileSize: file.size,
+    };
+
+    setPlaylist(prev => {
+      const updated = [...prev, item];
+      syncChannelRef.current?.broadcastPlaylist(updated);
+      return updated;
+    });
+
+    if (playNow && canControl) {
+      const nextRevision = playbackStateRef.current.revision + 1;
+      const newState: AuthoritativePlaybackState = {
+        ...playbackStateRef.current,
+        mediaId: playlistId,
+        mediaType: 'html5',
+        mediaUrl: localUrl,
+        playbackStatus: 'playing',
+        positionSeconds: 0,
+        playbackRate: 1.0,
+        updatedAt: Date.now(),
+        revision: nextRevision,
+        isLocalFile: true,
+        localFileName: file.name,
+        localFileSize: file.size,
+      };
+
+      setPlaybackState(newState);
+      playbackStateRef.current = newState;
+      syncChannelRef.current?.broadcastPlayback(newState);
+
+      if (playerControlsRef.current) {
+        playerControlsRef.current.applyRemoteAction('playing', 0, 1.0);
+      }
+
+      const formattedSize = formatFileSize(file.size);
+      sendChatMessage(`📁 Started streaming local video: "${file.name}" (${formattedSize}). Select or drop your copy to sync in 4K!`);
+    }
+  }, [roomId, user.id, user.name, canControl, sendChatMessage]);
 
   const createPoll = useCallback((poll: Poll) => {
     const updated = [poll, ...polls];
@@ -605,6 +696,8 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       value={{
         roomId,
         playbackState,
+        activeResolvedMediaUrl,
+        hasMatchingLocalFile,
         members,
         messages,
         playlist,
@@ -622,6 +715,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
         addToPlaylist,
         removeFromPlaylist,
         playFromPlaylist,
+        loadLocalVideo,
         createPoll,
         votePoll,
         transferHost,

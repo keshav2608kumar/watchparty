@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { ListVideo, Plus, Play, Trash2, Film, Video, ExternalLink } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { ListVideo, Plus, Play, Trash2, Film, Video, ExternalLink, FolderOpen, HardDrive, Upload, Sparkles } from 'lucide-react';
 import { PlaylistItem, MediaType } from '../../types/room';
-import { detectMediaType, formatTime, normalizeCustomMediaUrl } from '../../utils/formatters';
+import { detectMediaType, formatTime, normalizeCustomMediaUrl, formatFileSize } from '../../utils/formatters';
 import { SAMPLE_CATALOG } from '../../services/catalogService';
 
 interface PlaylistDrawerProps {
@@ -11,6 +11,7 @@ interface PlaylistDrawerProps {
   onPlayItem: (item: PlaylistItem) => void;
   onAddItem: (item: Omit<PlaylistItem, 'id' | 'addedAt'>) => void;
   onRemoveItem: (id: string) => void;
+  onLoadLocalVideo?: (file: File) => void;
   currentUserId: string;
   currentUserName: string;
 }
@@ -22,12 +23,14 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
   onPlayItem,
   onAddItem,
   onRemoveItem,
+  onLoadLocalVideo,
   currentUserId,
   currentUserName,
 }) => {
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const localFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddCustom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +108,9 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
                     {index + 1}
                   </span>
                   <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center flex-shrink-0 border border-surface-border overflow-hidden">
-                    {item.thumbnailUrl ? (
+                    {item.isLocalFile ? (
+                      <HardDrive className="w-4 h-4 text-emerald-400" />
+                    ) : item.thumbnailUrl ? (
                       <img src={item.thumbnailUrl} alt="" className="w-full h-full object-cover" />
                     ) : item.type === 'youtube' ? (
                       <Video className="w-4 h-4 text-rose-500" />
@@ -117,8 +122,12 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
                     <p className={`text-xs font-medium truncate ${isPlaying ? 'text-brand-300 font-semibold' : 'text-slate-200'}`}>
                       {item.title}
                     </p>
-                    <p className="text-[10px] text-slate-400">
-                      Added by {item.addedByName}
+                    <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                      {item.isLocalFile ? (
+                        <span className="text-emerald-400 font-medium">Local ({formatFileSize(item.localFileSize)})</span>
+                      ) : (
+                        <span>Added by {item.addedByName}</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -159,7 +168,50 @@ export const PlaylistDrawer: React.FC<PlaylistDrawerProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="w-full max-w-md bg-surface-card border border-surface-border rounded-2xl shadow-2xl p-5 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <h3 className="text-base font-bold text-white mb-1">Add Media to Queue</h3>
-            <p className="text-xs text-slate-400 mb-4">Paste any direct MP4/WebM video stream or YouTube video URL.</p>
+            <p className="text-xs text-slate-400 mb-4">Stream local downloaded files, web videos, or YouTube clips.</p>
+
+            {/* Local Video Stream Picker Option */}
+            {onLoadLocalVideo && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300 mb-0.5">
+                      <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Stream Local / Downloaded Video</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Stream any MP4, WebM, MKV file from your laptop or phone. Perfect 4K quality with zero server buffering!
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => localFileInputRef.current?.click()}
+                    className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Browse</span>
+                  </button>
+                  <input
+                    ref={localFileInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm,video/ogg,video/x-matroska,video/quicktime,video/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        onLoadLocalVideo(e.target.files[0]);
+                        setShowAddModal(false);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 my-3">
+              <div className="flex-1 h-px bg-surface-border" />
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Or Stream Online Link</span>
+              <div className="flex-1 h-px bg-surface-border" />
+            </div>
 
             <form onSubmit={handleAddCustom} className="space-y-3">
               <div>

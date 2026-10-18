@@ -3,10 +3,10 @@
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-watchparty--cinema--live.surge.sh-6366f1?style=for-the-badge&logo=vercel)](https://watchparty-cinema-live.surge.sh)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-keshav2608kumar%2Fwatchparty-24292e?style=for-the-badge&logo=github)](https://github.com/keshav2608kumar/watchparty)
 [![Build Status](https://img.shields.io/badge/Build-Passing%20✓-10b981?style=for-the-badge)](https://watchparty-cinema-live.surge.sh)
-[![Tests](https://img.shields.io/badge/Tests-27%2F27%20Passing-emerald?style=for-the-badge)](https://watchparty-cinema-live.surge.sh)
+[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Passing-emerald?style=for-the-badge)](https://watchparty-cinema-live.surge.sh)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-**WatchParty** is a high-performance, real-time synchronized cinema application engineered for seamless co-watching. It enables users worldwide to watch movies, video streams, and YouTube videos in perfect frame-accurate synchronization with live audience chat, floating emoji reactions, group polls, shared queues, **smooth real-time microphone voice chat**, and **open room playback controls** where anyone can pause and play.
+**WatchParty** is a high-performance, real-time synchronized cinema application engineered for seamless co-watching. It enables users worldwide to watch movies, video streams, YouTube videos, and **local/downloaded video files** in perfect frame-accurate synchronization with live audience chat, floating emoji reactions, group polls, shared queues, **smooth real-time microphone voice chat**, and **open room playback controls** where anyone can pause and play.
 
 ---
 
@@ -25,32 +25,37 @@
 - **Monotonic Revision Authority:** Every playback state change increments an authoritative revision counter, preventing stale or out-of-order commands from interfering with the stream.
 - **Host Permission Toggle:** Hosts can toggle between open shared control ("Open Control") and locked host-only control in room settings whenever desired.
 
-### 2. 🔗 One-Click Custom Stream URL & Invite Copying
+### 2. 📁 Stream Local & Downloaded Videos (Zero-Bandwidth 4K Sync)
+- **High-Definition Local Playback:** Stream any downloaded video file (MP4, WebM, MKV, MOV) without uploading gigabytes of data to third-party cloud servers.
+- **Drag-and-Drop Simplicity:** Drag any video file directly from your computer into the player window, or click **"📁 Local Video"** in the player header or queue drawer.
+- **Participant File-Matching Overlay:** When a room member queues a local video, peers see a synchronized matching prompt displaying the exact file name and formatted file size (e.g. `Inception.2010.1080p.mp4 (2.14 GB)`). Clicking **"Select Downloaded Video File"** locks in the peer's copy, allowing both users to enjoy butter-smooth 4K playback with millisecond-level timeline synchronization.
+
+### 3. 🔗 One-Click Custom Stream URL & Invite Copying
 - **Direct Stream Link Copy:** Top header overlay on the video player and room navigation bar features a 1-click **"Stream Link"** button to copy the direct media URL.
 - **Preloaded Room Invitation:** The **"Invite"** modal automatically constructs room share links with `?mediaUrl=...&mediaType=...` so anyone who opens the link immediately has the custom stream playing in sync.
 
-### 3. 🎙️ Smooth Real-Time WebRTC Voice Chat
+### 4. 🎙️ Smooth Real-Time WebRTC Voice Chat
 - **Ultra-Low Latency Mesh:** Browser-native WebRTC peer-to-peer audio connections utilizing public Google STUN servers with Opus codec hardware acceleration.
 - **Acoustic Isolation:** Built-in echo cancellation, noise suppression, and automatic gain control ensure movie audio playing from speakers does not loop into the mic.
 - **Zero-Renegotiation Muting:** Muting and unmuting toggles `MediaStreamTrack.enabled` instantaneously without tearing down or renegotiating peer connections.
 - **Deafen Audio Support:** Users can deafen incoming voice audio during intense movie scenes, then undeafen with a single click.
 - **Live Voice Activity Detection (VAD) & Animated Waveform:** Web Audio API AnalyserNode powers an animated 5-bar live audio visualizer and pulsates glowing green rings around avatars in the audience list when speaking.
 
-### 4. ⚡ Authoritative Real-Time Synchronization Engine
+### 5. ⚡ Authoritative Real-Time Synchronization Engine
 - **Millisecond-Accurate State Propagation:** State drift below 500ms is maintained without disruptive hard seeks.
 - **Instant Reciprocal Presence:** When a peer joins, connected clients immediately fire reciprocal handshakes, instantly updating audience counts ("2 watching together").
 - **Multi-Broker Fallback:** Dual MQTT brokers (`broker.emqx.io` and `broker.hivemq.com`) plus local BroadcastChannel ensure rock-solid internet-wide connectivity.
 
-### 5. 📺 Universal Dual-Engine Video Player
-- **Native HTML5 Stream Engine:** High-performance direct streaming for CORS-compatible MP4, WebM, HLS, and cloud-hosted video binaries.
+### 6. 📺 Universal Dual-Engine Video Player
+- **Native HTML5 Stream Engine:** High-performance direct streaming for CORS-compatible MP4, WebM, HLS, local video blobs, and cloud-hosted video binaries.
 - **Official YouTube IFrame Player API:** Custom cinematic interface overlay with native gesture pass-through, supporting YouTube Watch, Shorts, Embeds, and Live links.
 - **Autoplay Recovery:** Automatically detects browser unmuted autoplay restrictions, continuing video playback seamlessly in muted mode with a one-click floating **"Click to Unmute Audio"** prompt.
 
-### 6. 💬 Rich Audience Interactivity
+### 7. 💬 Rich Audience Interactivity
 - **Real-Time Group Chat:** Instant messaging with member avatars, timestamps, and host badges.
 - **Floating Animated Reactions:** Live emoji cascades with randomized trajectory bursts and sender tags.
 - **Live Group Polls:** Multi-option real-time voting with instant percentage recalculation and duplicate vote prevention.
-- **Shared Party Queue:** Dynamically add items from the curated catalog or paste custom stream URLs.
+- **Shared Party Queue:** Dynamically add items from the curated catalog, local files, or paste custom stream URLs.
 
 ---
 

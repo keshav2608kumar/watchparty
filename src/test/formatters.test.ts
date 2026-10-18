@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTime, parseYouTubeId, detectMediaType, normalizeCustomMediaUrl } from '../utils/formatters';
+import { formatTime, formatFileSize, parseYouTubeId, detectMediaType, normalizeCustomMediaUrl } from '../utils/formatters';
 
 describe('Formatters & Media Parsers', () => {
   it('formats seconds into mm:ss and hh:mm:ss strings', () => {
@@ -8,6 +8,15 @@ describe('Formatters & Media Parsers', () => {
     expect(formatTime(65)).toBe('1:05');
     expect(formatTime(734)).toBe('12:14');
     expect(formatTime(3665)).toBe('1:01:05');
+  });
+
+  it('formats file sizes into human-readable units', () => {
+    expect(formatFileSize(0)).toBe('0 B');
+    expect(formatFileSize(500)).toBe('500 B');
+    expect(formatFileSize(1024)).toBe('1 KB');
+    expect(formatFileSize(1572864)).toBe('1.5 MB');
+    expect(formatFileSize(1073741824)).toBe('1 GB');
+    expect(formatFileSize(1610612736)).toBe('1.5 GB');
   });
 
   it('correctly parses YouTube video IDs from various formats including shorts and raw IDs', () => {
@@ -21,10 +30,12 @@ describe('Formatters & Media Parsers', () => {
     expect(parseYouTubeId('https://example.com/video.mp4')).toBe(null);
   });
 
-  it('detects media type accurately', () => {
+  it('detects media type accurately including local and web videos', () => {
     expect(detectMediaType('https://youtu.be/dQw4w9WgXcQ')).toBe('youtube');
     expect(detectMediaType('https://www.youtube.com/shorts/aqz-KE-bpKQ')).toBe('youtube');
     expect(detectMediaType('https://vjs.zencdn.net/v/oceans.mp4')).toBe('html5');
+    expect(detectMediaType('local://my-movie.mp4')).toBe('html5');
+    expect(detectMediaType('blob:http://localhost:5173/abcd-1234')).toBe('html5');
   });
 
   it('normalizes cloud preview URLs to direct streaming binaries', () => {
@@ -37,6 +48,11 @@ describe('Formatters & Media Parsers', () => {
     const dropbox = normalizeCustomMediaUrl('https://www.dropbox.com/s/xyz123/video.mp4?dl=0');
     expect(dropbox.url).toBe('https://www.dropbox.com/s/xyz123/video.mp4?raw=1');
     expect(dropbox.type).toBe('html5');
+
+    // Local file protocol
+    const local = normalizeCustomMediaUrl('local://movie.mp4');
+    expect(local.url).toBe('local://movie.mp4');
+    expect(local.type).toBe('html5');
 
     // Protocol prepending
     const noProtocol = normalizeCustomMediaUrl('vjs.zencdn.net/v/oceans.mp4');

@@ -57,6 +57,14 @@ export function parseYouTubeId(input: string): string | null {
   return null;
 }
 
+export function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
 /**
  * Normalizes custom video inputs, converting cloud preview pages (Google Drive, Dropbox)
  * to direct streamable binaries, and resolving YouTube formats.
@@ -64,6 +72,13 @@ export function parseYouTubeId(input: string): string | null {
 export function normalizeCustomMediaUrl(rawUrl: string): { url: string; type: MediaType } {
   if (!rawUrl) return { url: '', type: 'html5' };
   let url = rawUrl.trim().replace(/^[<"']|[>"']$/g, '');
+
+  if (url.startsWith('local://') || url.startsWith('blob:')) {
+    return {
+      url,
+      type: 'html5',
+    };
+  }
 
   const ytId = parseYouTubeId(url);
   if (ytId) {
