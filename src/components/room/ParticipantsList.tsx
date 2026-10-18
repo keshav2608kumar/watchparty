@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Crown, ArrowRightLeft } from 'lucide-react';
+import { Users, Crown, ArrowRightLeft, Mic, MicOff, VolumeX } from 'lucide-react';
 import { RoomMember } from '../../types/room';
 
 interface ParticipantsListProps {
@@ -38,16 +38,28 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
           return (
             <div
               key={member.id}
-              className="flex items-center justify-between p-2 rounded-xl bg-surface/50 border border-surface-border/60 hover:bg-surface-hover/80 transition"
+              className={`flex items-center justify-between p-2 rounded-xl transition ${
+                member.isSpeaking
+                  ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-[0_0_12px_rgba(52,211,153,0.15)]'
+                  : 'bg-surface/50 border border-surface-border/60 hover:bg-surface-hover/80'
+              }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="relative">
                   <img
                     src={member.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${member.id}`}
                     alt={member.name}
-                    className="w-8 h-8 rounded-full bg-surface border border-surface-border"
+                    className={`w-8 h-8 rounded-full bg-surface border transition-all duration-200 ${
+                      member.isSpeaking
+                        ? 'ring-2 ring-emerald-400 border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] scale-105'
+                        : 'border-surface-border'
+                    }`}
                   />
-                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-surface-card" />
+                  <div
+                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface-card ${
+                      member.isSpeaking ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-500'
+                    }`}
+                  />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -57,6 +69,22 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({
                     {isMe && (
                       <span className="text-[10px] text-slate-400 bg-white/10 px-1 rounded">
                         You
+                      </span>
+                    )}
+                    {member.isVoiceActive && (
+                      <span 
+                        className="flex items-center ml-0.5" 
+                        title={member.isDeafened ? 'Deafened' : member.isMuted ? 'Mic Muted' : member.isSpeaking ? 'Speaking' : 'In Voice'}
+                      >
+                        {member.isDeafened ? (
+                          <VolumeX className="w-3 h-3 text-amber-400" />
+                        ) : member.isMuted ? (
+                          <MicOff className="w-3 h-3 text-rose-400" />
+                        ) : member.isSpeaking ? (
+                          <Mic className="w-3 h-3 text-emerald-400 animate-pulse" />
+                        ) : (
+                          <Mic className="w-3 h-3 text-slate-400" />
+                        )}
                       </span>
                     )}
                   </div>

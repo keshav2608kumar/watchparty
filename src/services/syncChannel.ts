@@ -4,7 +4,10 @@ import {
   FloatingReaction, 
   PlaylistItem, 
   Poll, 
-  RoomMember 
+  RoomMember,
+  VoiceSignalPayload,
+  VoiceStatePayload,
+  RoomSettings
 } from '../types/room';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -19,6 +22,9 @@ export interface SyncCallbacks {
   onHostTransfer: (newHostId: string) => void;
   onPresenceChange: (members: RoomMember[]) => void;
   onRequestState?: (requesterId: string) => void;
+  onVoiceSignal?: (signal: VoiceSignalPayload) => void;
+  onVoiceState?: (state: VoiceStatePayload) => void;
+  onSettingsUpdate?: (settings: RoomSettings) => void;
   onConnectionModeChange?: (mode: ConnectionMode) => void;
 }
 
@@ -100,6 +106,22 @@ export class RoomSyncChannel {
       .on('broadcast', { event: 'request_state' }, (payload) => {
         if (payload?.payload?.requesterId && this.callbacks.onRequestState) {
           this.callbacks.onRequestState(payload.payload.requesterId);
+        }
+      })
+      .on('broadcast', { event: 'voice_signal' }, (payload) => {
+        if (payload?.payload && this.callbacks.onVoiceSignal && 
+           (payload.payload.to === this.currentMember.id || payload.payload.to === 'all')) {
+          this.callbacks.onVoiceSignal(payload.payload);
+        }
+      })
+      .on('broadcast', { event: 'voice_state' }, (payload) => {
+        if (payload?.payload && this.callbacks.onVoiceState) {
+          this.callbacks.onVoiceState(payload.payload);
+        }
+      })
+      .on('broadcast', { event: 'room_settings' }, (payload) => {
+        if (payload?.payload && this.callbacks.onSettingsUpdate) {
+          this.callbacks.onSettingsUpdate(payload.payload);
         }
       })
       .on('presence', { event: 'sync' }, () => {
@@ -339,6 +361,34 @@ export class RoomSyncChannel {
         this.localPresenceMap.delete(payload.id);
         this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
         break;
+      case 'voice_signal':
+        if (this.callbacks.onVoiceSignal && (payload.to === this.currentMember.id || payload.to === 'all')) {
+          this.callbacks.onVoiceSignal(payload);
+        }
+        break;
+      case 'voice_state':
+        if (payload?.memberId) {
+          const existing = this.localPresenceMap.get(payload.memberId);
+          if (existing) {
+            this.localPresenceMap.set(payload.memberId, {
+              ...existing,
+              isVoiceActive: payload.isVoiceActive,
+              isMuted: payload.isMuted,
+              isSpeaking: payload.isSpeaking,
+              isDeafened: payload.isDeafened,
+            });
+            this.callbacks.onPresenceChange(Array.from(this.localPresenceMap.values()));
+          }
+        }
+        if (this.callbacks.onVoiceState) {
+          this.callbacks.onVoiceState(payload);
+        }
+        break;
+      case 'room_settings':
+        if (this.callbacks.onSettingsUpdate) {
+          this.callbacks.onSettingsUpdate(payload);
+        }
+        break;
     }
   }
 
@@ -435,6 +485,18 @@ export class RoomSyncChannel {
 
   public broadcastHostTransfer(newHostId: string): void {
     this.broadcast('host_transfer', { newHostId });
+  }
+
+  public broadcastVoiceSignal(signal: VoiceSignalPayload): void {
+    this.broadcast('voice_signal', signal);
+  }
+
+  public broadcastVoiceState(state: VoiceStatePayload): void {
+    this.broadcast('voice_state', state);
+  }
+
+  public broadcastSettings(settings: RoomSettings): void {
+    this.broadcast('room_settings', settings);
   }
 
   public updateMember(member: RoomMember): void {

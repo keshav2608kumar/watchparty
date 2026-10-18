@@ -30,6 +30,9 @@ export interface RoomMember {
   joinedAt: number;
   lastActive: number;
   isMuted?: boolean;
+  isVoiceActive?: boolean;
+  isSpeaking?: boolean;
+  isDeafened?: boolean;
 }
 
 export interface ChatMessage {
@@ -99,4 +102,22 @@ export interface RoomData {
   members: RoomMember[];
   playlist: PlaylistItem[];
   polls: Poll[];
+}
+
+export interface VoiceSignalPayload {
+  from: string;
+  to: string;
+  signal: {
+    type: 'offer' | 'answer' | 'candidate';
+    sdp?: any;
+    candidate?: any;
+  };
+}
+
+export interface VoiceStatePayload {
+  memberId: string;
+  isVoiceActive: boolean;
+  isMuted: boolean;
+  isSpeaking: boolean;
+  isDeafened: boolean;
 }

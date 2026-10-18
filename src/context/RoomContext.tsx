@@ -8,7 +8,9 @@ import {
   RoomMember, 
   MediaType,
   PlaybackStatus,
-  RoomSettings
+  RoomSettings,
+  VoiceSignalPayload,
+  VoiceStatePayload
 } from '../types/room';
 import { RoomSyncChannel, ConnectionMode, SyncCallbacks } from '../services/syncChannel';
 import { useAuth } from './AuthContext';
@@ -40,6 +42,9 @@ interface RoomContextType {
   votePoll: (pollId: string, optionId: string) => void;
   transferHost: (newHostId: string) => void;
   updateSettings: (newSettings: Partial<RoomSettings>) => void;
+  broadcastVoiceSignal: (signal: VoiceSignalPayload) => void;
+  broadcastVoiceState: (state: VoiceStatePayload) => void;
+  registerVoiceSignalListener: (listener: (signal: VoiceSignalPayload) => void) => () => void;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -83,7 +88,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
 
   const [settings, setSettings] = useState<RoomSettings>({
     isPublic: true,
-    allowGuestsToControl: false,
+    allowGuestsToControl: true, // Default open room control so any member can pause, play, and seek
     maxParticipants: 20,
   });
 
@@ -182,6 +187,8 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     getPlayerStateRef.current = getState;
   }, []);
 
+  const voiceListenersRef = useRef<Set<(signal: VoiceSignalPayload) => void>>(new Set());
+
   // Stable callbacks ref to prevent tearing or reconnecting
   const callbacksRef = useRef<SyncCallbacks>({
     onPlaybackState: () => {},
@@ -192,6 +199,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     onHostTransfer: () => {},
     onPresenceChange: () => {},
     onRequestState: () => {},
+    onVoiceSignal: () => {},
+    onVoiceState: () => {},
+    onSettingsUpdate: () => {},
   });
 
   callbacksRef.current = {
@@ -302,7 +312,29 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
         pollsRef.current.forEach(p => syncChannelRef.current?.broadcastPoll(p));
         messagesRef.current.filter(m => !m.isSystem).forEach(m => syncChannelRef.current?.broadcastChat(m));
       }
-    }
+    },
+    onSettingsUpdate: (incomingSettings) => {
+      setSettings(incomingSettings);
+    },
+    onVoiceSignal: (signal) => {
+      voiceListenersRef.current.forEach(listener => {
+        try { listener(signal); } catch (e) { console.warn('[Voice] Listener error:', e); }
+      });
+    },
+    onVoiceState: (state) => {
+      setMembers(prev => prev.map(m => {
+        if (m.id === state.memberId) {
+          return {
+            ...m,
+            isVoiceActive: state.isVoiceActive,
+            isMuted: state.isMuted,
+            isSpeaking: state.isSpeaking,
+            isDeafened: state.isDeafened,
+          };
+        }
+        return m;
+      }));
+    },
   };
 
   // Initialize Realtime Channel once per roomId + user.id
@@ -316,6 +348,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       onHostTransfer: (h) => callbacksRef.current.onHostTransfer(h),
       onPresenceChange: (m) => callbacksRef.current.onPresenceChange(m),
       onRequestState: (req) => callbacksRef.current.onRequestState?.(req),
+      onVoiceSignal: (s) => callbacksRef.current.onVoiceSignal?.(s),
+      onVoiceState: (st) => callbacksRef.current.onVoiceState?.(st),
+      onSettingsUpdate: (set) => callbacksRef.current.onSettingsUpdate?.(set),
       onConnectionModeChange: (mode) => setConnectionMode(mode),
     });
 
@@ -511,7 +546,38 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
   }, [user.id, hostId, storageRoomHostKey]);
 
   const updateSettings = useCallback((newSettings: Partial<RoomSettings>) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
+    setSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      syncChannelRef.current?.broadcastSettings(updated);
+      return updated;
+    });
+  }, []);
+
+  const registerVoiceSignalListener = useCallback((listener: (signal: VoiceSignalPayload) => void) => {
+    voiceListenersRef.current.add(listener);
+    return () => {
+      voiceListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const broadcastVoiceSignal = useCallback((signal: VoiceSignalPayload) => {
+    syncChannelRef.current?.broadcastVoiceSignal(signal);
+  }, []);
+
+  const broadcastVoiceState = useCallback((state: VoiceStatePayload) => {
+    setMembers(prev => prev.map(m => {
+      if (m.id === state.memberId) {
+        return {
+          ...m,
+          isVoiceActive: state.isVoiceActive,
+          isMuted: state.isMuted,
+          isSpeaking: state.isSpeaking,
+          isDeafened: state.isDeafened,
+        };
+      }
+      return m;
+    }));
+    syncChannelRef.current?.broadcastVoiceState(state);
   }, []);
 
   return (
@@ -540,6 +606,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
         votePoll,
         transferHost,
         updateSettings,
+        broadcastVoiceSignal,
+        broadcastVoiceState,
+        registerVoiceSignalListener,
       }}
     >
       {children}

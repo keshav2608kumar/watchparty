@@ -13,7 +13,8 @@ import {
   Copy,
   Check,
   Shield,
-  HelpCircle
+  HelpCircle,
+  Link2
 } from 'lucide-react';
 import { RoomProvider, useRoom } from '../context/RoomContext';
 import { VideoPlayer } from '../components/player/VideoPlayer';
@@ -23,6 +24,8 @@ import { ParticipantsList } from '../components/room/ParticipantsList';
 import { PlaylistDrawer } from '../components/room/PlaylistDrawer';
 import { PollsPanel } from '../components/room/PollsPanel';
 import { InviteModal } from '../components/room/InviteModal';
+import { VoiceControlBar } from '../components/voice/VoiceControlBar';
+import { useVoiceChat } from '../components/voice/useVoiceChat';
 import { useAuth } from '../context/AuthContext';
 import { MediaType } from '../types/room';
 import { normalizeCustomMediaUrl } from '../utils/formatters';
@@ -54,6 +57,9 @@ const WatchRoomInner: React.FC = () => {
     votePoll,
     transferHost,
     updateSettings,
+    broadcastVoiceSignal,
+    broadcastVoiceState,
+    registerVoiceSignalListener,
   } = useRoom();
 
   const { user } = useAuth();
@@ -63,11 +69,27 @@ const WatchRoomInner: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedStreamUrl, setCopiedStreamUrl] = useState(false);
+
+  const voiceChat = useVoiceChat({
+    currentUserId: user.id,
+    members,
+    registerVoiceSignalListener,
+    broadcastVoiceSignal,
+    broadcastVoiceState,
+  });
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(roomId);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleCopyStreamUrl = () => {
+    if (!playbackState.mediaUrl) return;
+    navigator.clipboard.writeText(playbackState.mediaUrl);
+    setCopiedStreamUrl(true);
+    setTimeout(() => setCopiedStreamUrl(false), 2000);
   };
 
   const handleLocalPlayerAction = React.useCallback((action: 'play' | 'pause' | 'seek', position: number) => {
@@ -110,6 +132,22 @@ const WatchRoomInner: React.FC = () => {
               <span>{roomId}</span>
               {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-500" />}
             </button>
+
+            {playbackState.mediaUrl && (
+              <button
+                onClick={handleCopyStreamUrl}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface border border-surface-border hover:border-electric-blue text-xs font-mono font-medium text-slate-200 transition"
+                title={`Copy custom stream URL: ${playbackState.mediaUrl}`}
+              >
+                <Link2 className="w-3.5 h-3.5 text-electric-blue" />
+                <span className="hidden sm:inline">Stream Link</span>
+                {copiedStreamUrl ? (
+                  <Check className="w-3 h-3 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3 h-3 text-slate-500" />
+                )}
+              </button>
+            )}
           </div>
 
           {/* Realtime Transport Indicator */}
@@ -202,6 +240,23 @@ const WatchRoomInner: React.FC = () => {
               <div className="flex-shrink-0">
                 <ReactionPicker onSendReaction={sendReaction} />
               </div>
+            </div>
+
+            {/* Realtime Smooth Voice Chat Bar */}
+            <div className="mt-3">
+              <VoiceControlBar
+                isVoiceActive={voiceChat.isVoiceActive}
+                isMuted={voiceChat.isMuted}
+                isDeafened={voiceChat.isDeafened}
+                isSpeaking={voiceChat.isSpeaking}
+                audioLevel={voiceChat.audioLevel}
+                error={voiceChat.error}
+                activeVoiceMembers={voiceChat.activeVoiceMembers}
+                onJoinVoice={voiceChat.joinVoice}
+                onLeaveVoice={voiceChat.leaveVoice}
+                onToggleMute={voiceChat.toggleMute}
+                onToggleDeafen={voiceChat.toggleDeafen}
+              />
             </div>
           </div>
         </div>
@@ -322,6 +377,8 @@ const WatchRoomInner: React.FC = () => {
       {/* Invite Modal */}
       <InviteModal
         roomId={roomId}
+        mediaUrl={playbackState.mediaUrl}
+        mediaType={playbackState.mediaType}
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
       />

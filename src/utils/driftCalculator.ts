@@ -81,9 +81,10 @@ export function shouldAcceptPlaybackRevision(
 export function canUserControlPlayback(
   userId: string,
   hostId: string,
-  settings: RoomSettings
+  settings?: RoomSettings
 ): boolean {
   if (!userId) return false;
   if (userId === hostId) return true;
-  return settings.allowGuestsToControl;
+  // Open control: guests can control playback when allowGuestsToControl is enabled (default)
+  return settings ? settings.allowGuestsToControl : true;
 }

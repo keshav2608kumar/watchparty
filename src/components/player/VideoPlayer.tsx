@@ -10,7 +10,10 @@ import {
   AlertCircle,
   Radio,
   Sliders,
-  Sparkles
+  Sparkles,
+  Copy,
+  Check,
+  Link2
 } from 'lucide-react';
 import { MediaType, PlaybackStatus, FloatingReaction } from '../../types/room';
 import { formatTime } from '../../utils/formatters';
@@ -47,6 +50,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const [showControls, setShowControls] = useState<boolean>(true);
   const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+  const [copiedStream, setCopiedStream] = useState<boolean>(false);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -202,6 +206,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Direct Stream URL Copy Button */}
+          {mediaUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(mediaUrl);
+                setCopiedStream(true);
+                setTimeout(() => setCopiedStream(false), 2000);
+              }}
+              title={`Copy video stream URL: ${mediaUrl}`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 border border-white/10 hover:border-brand-500 text-[11px] font-mono text-slate-200 transition"
+            >
+              <Link2 className="w-3 h-3 text-brand-400" />
+              <span className="hidden md:inline">Stream Link</span>
+              {copiedStream ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+            </button>
+          )}
+
           {Math.abs(syncDrift) > 0.05 && (
             <div className="text-[11px] px-2 py-0.5 rounded bg-black/60 text-slate-300 border border-white/10 hidden sm:flex items-center gap-1">
               <span>Drift:</span>
@@ -210,7 +232,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </span>
             </div>
           )}
-          {!canControl && (
+
+          {canControl ? (
+            <span className="text-[11px] bg-brand-500/10 text-brand-300 border border-brand-500/30 px-2.5 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1.5" title="Anyone can play, pause, and seek video">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
+              Open Control
+            </span>
+          ) : (
             <span className="text-xs bg-black/70 text-slate-400 border border-white/10 px-2.5 py-1 rounded-full">
               Host Controlled
             </span>
