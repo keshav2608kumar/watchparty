@@ -364,7 +364,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
     };
   }, [roomId, user.id]);
 
-  // Periodic Drift Check (Runs every 1.5s for viewers while playing)
+  // Periodic Drift Check (Runs every 300ms for viewers while playing to keep sync ultra-tight)
   useEffect(() => {
     const driftInterval = setInterval(() => {
       if (!getPlayerStateRef.current || !playerControlsRef.current) return;
@@ -379,7 +379,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
       const analysis = analyzeDrift(playerState.currentTime, authState);
       setSyncDrift(analysis.driftSeconds);
 
-      // Only viewers reconcile against the authoritative host
+      // Only viewers reconcile against the authoritative playback state
       if (!isHost) {
         if (playerState.status !== 'playing' && playerState.isReady) {
           playerControlsRef.current.applyRemoteAction('playing', analysis.targetTimeSeconds, authState.playbackRate);
@@ -391,9 +391,29 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({
           playerControlsRef.current.setPlaybackRate(1.0);
         }
       }
-    }, 1500);
+    }, 300);
 
     return () => clearInterval(driftInterval);
+  }, [isHost]);
+
+  // Host Periodic Position Beacon (every 2s while playing to prevent clock drift across devices)
+  useEffect(() => {
+    if (!isHost) return;
+    const beaconInterval = setInterval(() => {
+      if (!getPlayerStateRef.current) return;
+      const playerState = getPlayerStateRef.current();
+      if (playerState.status === 'playing' && playbackStateRef.current.playbackStatus === 'playing') {
+        const updatedState: AuthoritativePlaybackState = {
+          ...playbackStateRef.current,
+          positionSeconds: playerState.currentTime,
+          updatedAt: Date.now(),
+        };
+        playbackStateRef.current = updatedState;
+        syncChannelRef.current?.broadcastPlayback(updatedState);
+      }
+    }, 2000);
+
+    return () => clearInterval(beaconInterval);
   }, [isHost]);
 
   // Actions

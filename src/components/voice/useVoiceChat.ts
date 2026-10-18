@@ -17,6 +17,23 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
+/**
+ * Optimizes WebRTC Opus codec parameters:
+ * - minptime=10: 10ms frame packets for lowest voice latency
+ * - useinbandfec=1: In-Band Forward Error Correction to eliminate mobile packet drop jitter
+ * - maxaveragebitrate=48000: Crystal clear HD voice
+ */
+function optimizeOpusSdp(sdp: string): string {
+  if (!sdp) return sdp;
+  if (!sdp.includes('useinbandfec=1')) {
+    return sdp.replace(
+      /a=rtpmap:(\d+) opus\/48000\/2/i,
+      'a=rtpmap:$1 opus/48000/2\r\na=fmtp:$1 minptime=10;useinbandfec=1;maxaveragebitrate=48000;stereo=0;cbr=1'
+    );
+  }
+  return sdp;
+}
+
 export function useVoiceChat({
   currentUserId,
   members,
@@ -133,7 +150,9 @@ export function useVoiceChat({
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      if (pc.connectionState === 'failed') {
+        try { (pc as any).restartIce?.(); } catch {}
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
         closePeer(peerId);
       }
     };
@@ -141,13 +160,19 @@ export function useVoiceChat({
     return pc;
   }, [currentUserId, broadcastVoiceSignal, closePeer]);
 
-  // Initiate WebRTC offer to peer if deterministic order matches
+  // Initiate WebRTC offer to peer with optimized Opus SDP
   const initiateOfferToPeer = useCallback(async (peerId: string) => {
     try {
       const pc = getOrCreatePeerConnection(peerId);
+      if (pc.signalingState !== 'stable') return;
+
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
       });
+
+      if (offer.sdp) {
+        offer.sdp = optimizeOpusSdp(offer.sdp);
+      }
       await pc.setLocalDescription(offer);
 
       broadcastVoiceSignal({
@@ -192,6 +217,9 @@ export function useVoiceChat({
 
           if (pc.signalingState === 'have-remote-offer') {
             const answer = await pc.createAnswer();
+            if (answer.sdp) {
+              answer.sdp = optimizeOpusSdp(answer.sdp);
+            }
             await pc.setLocalDescription(answer);
 
             broadcastVoiceSignal({
@@ -336,11 +364,24 @@ export function useVoiceChat({
         throw new Error('Microphone access is not supported in this browser.');
       }
 
+      // Pre-warm & resume AudioContext during user gesture for mobile iOS/Android browsers
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtxClass) {
+        try {
+          const ctx = new AudioCtxClass();
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+          audioContextRef.current = ctx;
+        } catch {}
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          channelCount: 1,
           sampleRate: 48000,
         },
         video: false,

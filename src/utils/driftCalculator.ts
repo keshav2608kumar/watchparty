@@ -7,8 +7,8 @@ export interface DriftAnalysis {
   suggestedRate: number; // e.g. 1.05 or 0.95
 }
 
-export const DRIFT_TOLERANCE_SECONDS = 0.5; // Under 500ms is considered in-sync
-export const DRIFT_HARD_SEEK_THRESHOLD = 2.5; // Above 2.5s triggers immediate hard seek
+export const DRIFT_TOLERANCE_SECONDS = 0.25; // Under 250ms is considered in-sync (ultra tight sync)
+export const DRIFT_HARD_SEEK_THRESHOLD = 1.2; // Above 1.2s triggers immediate seek
 
 /**
  * Calculates current authoritative playback position based on server timestamp and elapsed time
@@ -48,7 +48,7 @@ export function analyzeDrift(
 
   if (absDrift <= DRIFT_HARD_SEEK_THRESHOLD && state.playbackStatus === 'playing') {
     // If slightly ahead, slow down slightly; if slightly behind, speed up slightly
-    const suggestedRate = drift > 0 ? 0.92 : 1.08;
+    const suggestedRate = drift > 0 ? 0.94 : 1.06;
     return {
       driftSeconds: drift,
       targetTimeSeconds: targetTime,

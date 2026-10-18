@@ -44,28 +44,28 @@ describe('Drift Calculator & Real-Time Playback Synchronization', () => {
     expect(target).toBeCloseTo(16.0, 2);
   });
 
-  it('determines action "none" when drift is within tolerance (<= 0.5s)', () => {
+  it('determines action "none" when drift is within tolerance (<= 0.25s)', () => {
     const now = 1000000 + 2000; // authoritative target = 12.0s
-    // Local player is at 12.2s (drift = +0.2s <= 0.5s)
-    const analysis = analyzeDrift(12.2, baseState, now);
+    // Local player is at 12.15s (drift = +0.15s <= 0.25s)
+    const analysis = analyzeDrift(12.15, baseState, now);
     expect(analysis.action).toBe('none');
     expect(analysis.suggestedRate).toBe(1.0);
   });
 
-  it('determines action "rate-adjust" for moderate drift (between 0.5s and 2.5s)', () => {
+  it('determines action "rate-adjust" for moderate drift (between 0.25s and 1.2s)', () => {
     const now = 1000000 + 5000; // authoritative target = 15.0s
-    // Local player is lagging at 13.8s (drift = -1.2s)
-    const analysis = analyzeDrift(13.8, baseState, now);
+    // Local player is lagging at 14.4s (drift = -0.6s)
+    const analysis = analyzeDrift(14.4, baseState, now);
     expect(analysis.action).toBe('rate-adjust');
     expect(analysis.suggestedRate).toBeGreaterThan(1.0); // Should speed up slightly
 
-    // Local player is ahead at 16.2s (drift = +1.2s)
-    const aheadAnalysis = analyzeDrift(16.2, baseState, now);
+    // Local player is ahead at 15.6s (drift = +0.6s)
+    const aheadAnalysis = analyzeDrift(15.6, baseState, now);
     expect(aheadAnalysis.action).toBe('rate-adjust');
     expect(aheadAnalysis.suggestedRate).toBeLessThan(1.0); // Should slow down slightly
   });
 
-  it('determines action "seek" when drift exceeds hard seek threshold (> 2.5s)', () => {
+  it('determines action "seek" when drift exceeds hard seek threshold (> 1.2s)', () => {
     const now = 1000000 + 5000; // authoritative target = 15.0s
     // Local player is at 10.0s (drift = -5.0s)
     const analysis = analyzeDrift(10.0, baseState, now);
